@@ -12,7 +12,7 @@ public:
     ~Interpreter();
 
     void load(const Path& path);
-    void eval(const String& script);
+    void eval(const String& script, const String& name = String());
 
 private:
     v8::UniquePersistent<v8::Context> mContext;

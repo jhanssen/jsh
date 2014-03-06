@@ -73,8 +73,9 @@ Interpreter::~Interpreter()
 
 void Interpreter::load(const Path& path)
 {
+    eval(path.readAll());
 }
 
-void Interpreter::eval(const String& script)
+void Interpreter::eval(const String& script, const String& name)
 {
 }
