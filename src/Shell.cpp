@@ -3,6 +3,7 @@
 #include <histedit.h>
 #include <locale.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <pwd.h>
 #include <atomic>
 
@@ -47,6 +48,9 @@ static void sig(int i)
 
 static Path homeDirectory()
 {
+    if (char* homeEnv = getenv("HOME"))
+        return Path(homeEnv);
+
     struct passwd pwent;
     struct passwd* pwentp;
     char buf[8192];
