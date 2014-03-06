@@ -1,0 +1,9 @@
+[submodule "3rdparty/rct"]
+	path = 3rdparty/rct
+	url = https://github.com/Andersbakken/rct.git
+[submodule "3rdparty/v8"]
+	path = 3rdparty/v8
+	url = https://github.com/v8/v8.git
+[submodule "3rdparty/libedit"]
+	path = 3rdparty/libedit
+	url = https://github.com/jhanssen/libedit.git
