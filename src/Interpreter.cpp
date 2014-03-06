@@ -126,8 +126,10 @@ Value Interpreter::eval(const String& data, const String& name)
 
     v8::TryCatch try_catch;
     v8::Handle<v8::Script> script = v8::Script::Compile(source, fileName);
-    if (script.IsEmpty())
+    if (script.IsEmpty()) {
+        error() << "script" << name << "didn't compile";
         return Value();
+    }
 
     const v8::Handle<v8::Value> result = script->Run();
     if (try_catch.HasCaught()) {
