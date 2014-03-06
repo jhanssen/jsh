@@ -1,4 +1,7 @@
+#include "Shell.h"
+
 int main(int argc, char** argv)
 {
-    return 0;
+    Shell shell(argc, argv);
+    return shell.exec();
 }
