@@ -27,7 +27,8 @@ add_custom_target(v8 ${MAKE_COMMAND} dependencies
 		  WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/v8
                   )
 
-add_custom_target(libedit ./configure --enable-widec --enable-examples=no --enable-shared=no
+add_custom_target(libedit COMMAND ./autogen.sh
+		  COMMAND ./configure --enable-widec --enable-examples=no --enable-shared=no
                   COMMAND ${MAKE_COMMAND}
                   WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/libedit
                   )
