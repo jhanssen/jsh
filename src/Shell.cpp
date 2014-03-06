@@ -1,4 +1,5 @@
 #include "Shell.h"
+#include "Interpreter.h"
 #include <rct/Path.h>
 #include <histedit.h>
 #include <locale.h>
@@ -69,15 +70,20 @@ int Shell::exec()
     (void)signal(SIGHUP,  sig);
     (void)signal(SIGTERM, sig);
 
+    const Path home = homeDirectory();
+    const Path elFile = home + "/.jshel";
+    const Path rcFile = home + "/.jsrc";
+    const Path histFile = home + "/.jshist";
+
+    Interpreter interpreter;
+    interpreter.load(rcFile);
+
     EditLine* el = nullptr;
     int numc, ncontinuation;
     const wchar_t* line;
     HistoryW* hist;
     HistEventW ev;
     TokenizerW* tok;
-
-    const Path elFile = homeDirectory() + "/.jshel";
-    const Path histFile = homeDirectory() + "/.jshist";
 
     hist = history_winit();
     history_w(hist, &ev, H_SETSIZE, 100);

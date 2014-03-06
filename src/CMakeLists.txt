@@ -7,6 +7,7 @@ add_definitions(-DOS_${CMAKE_SYSTEM_NAME})
 include(${CMAKE_CURRENT_LIST_DIR}/../3rdparty/rct/compiler.cmake)
 
 set(CLIENT_SOURCES
+  Interpreter.cpp
   Shell.cpp
   main.cpp
   )
