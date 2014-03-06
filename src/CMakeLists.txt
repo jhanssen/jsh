@@ -22,9 +22,10 @@ include_directories(
 link_directories(
   ${CMAKE_CURRENT_LIST_DIR}/../3rdparty/libedit/src/.libs
   ${CMAKE_CURRENT_LIST_DIR}/../3rdparty/v8/out/native
+  ${CMAKE_CURRENT_LIST_DIR}/../3rdparty/v8/out/native/obj.host/third_party/icu
   )
 
 add_executable(jsh ${CLIENT_SOURCES})
-target_link_libraries(jsh pthread termcap rct edit v8_base.x64 v8_nosnapshot.x64)
+target_link_libraries(jsh pthread termcap rct edit v8_base.x64 v8_nosnapshot.x64 icui18n icuuc icudata)
 
 #add_dependencies(jsh v8)
