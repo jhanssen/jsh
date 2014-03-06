@@ -1,0 +1,7 @@
+.ninja*
+cmake*
+CMakeFiles
+CMakeCache.txt
+rules.ninja
+build.ninja
+jsh
