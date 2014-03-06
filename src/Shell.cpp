@@ -72,7 +72,7 @@ int Shell::exec()
 
     const Path home = homeDirectory();
     const Path elFile = home + "/.jshel";
-    const Path rcFile = home + "/.jsrc";
+    const Path rcFile = home + "/.jshrc.js";
     const Path histFile = home + "/.jshist";
 
     Interpreter interpreter;

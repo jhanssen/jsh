@@ -1,6 +1,6 @@
 #include "Interpreter.h"
 
-static const char* ToCString(const v8::String::Utf8Value& value) {
+static inline const char* ToCString(const v8::String::Utf8Value& value) {
     return *value ? *value : "<string conversion failed>";
 }
 
@@ -71,11 +71,77 @@ Interpreter::~Interpreter()
     v8::V8::Dispose();
 }
 
-void Interpreter::load(const Path& path)
+v8::Handle<v8::String> Interpreter::toJSON(v8::Handle<v8::Value> object)
 {
-    eval(path.readAll());
+    v8::Isolate* isolate = v8::Isolate::GetCurrent();
+    v8::EscapableHandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = v8::Local<v8::Context>::New(isolate, mContext);
+    v8::Handle<v8::Object> global = context->Global();
+
+    v8::Handle<v8::Object> JSON = global->Get(v8::String::NewFromUtf8(isolate, "JSON"))->ToObject();
+    v8::Handle<v8::Function> stringify = v8::Handle<v8::Function>::Cast(JSON->Get(v8::String::NewFromUtf8(isolate, "stringify")));
+
+    return handle_scope.Escape(stringify->Call(JSON, 1, &object)->ToString());
 }
 
-void Interpreter::eval(const String& script, const String& name)
+inline Value Interpreter::v8ValueToValue(const v8::Handle<v8::Value>& value)
 {
+    if (value.IsEmpty() || value->IsNull() || value->IsUndefined())
+        return Value();
+    else if (value->IsTrue())
+        return Value(true);
+    else if (value->IsFalse())
+        return Value(false);
+    else if (value->IsInt32())
+        return Value(value->ToInt32()->Value());
+    else if (value->IsNumber())
+        return Value(value->ToNumber()->Value());
+    else if (value->IsString()) {
+        const v8::String::Utf8Value str(value);
+        return Value(ToCString(str));
+    } else if (value->IsObject()) {
+        const v8::String::Utf8Value str(toJSON(value));
+        return Value::fromJSON(ToCString(str));
+    } else {
+        error() << "Unknown v8 value in Interpreter::v8ValueToValue";
+    }
+    return Value();
+}
+
+Value Interpreter::load(const Path& path)
+{
+    if (!path.isFile()) {
+        error() << path << "is not a file";
+        return Value();
+    }
+    return eval(path.readAll(), path.fileName());
+}
+
+Value Interpreter::eval(const String& data, const String& name)
+{
+    v8::Isolate* isolate = v8::Isolate::GetCurrent();
+    v8::HandleScope scope(isolate);
+    v8::Handle<v8::String> fileName = v8::String::NewFromUtf8(isolate, name.constData());
+    v8::Handle<v8::String> source = v8::String::NewFromUtf8(isolate, data.constData());
+
+    v8::TryCatch try_catch;
+    v8::Handle<v8::Script> script = v8::Script::Compile(source, fileName);
+    if (script.IsEmpty())
+        return Value();
+
+    const v8::Handle<v8::Value> result = script->Run();
+    if (try_catch.HasCaught()) {
+        const v8::Handle<v8::Message> msg = try_catch.Message();
+        {
+            const v8::String::Utf8Value str(msg->Get());
+            error() << ToCString(str);
+        }
+        {
+            const v8::String::Utf8Value str(msg->GetScriptResourceName());
+            error() << String::format<64>("At %s:%d", ToCString(str), msg->GetLineNumber());
+        }
+        return Value();
+    }
+
+    return v8ValueToValue(result);
 }
