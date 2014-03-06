@@ -15,8 +15,9 @@ public:
     Value load(const Path& path);
     Value eval(const String& script, const String& name = String());
 
+    v8::Handle<v8::String> toJSON(v8::Handle<v8::Value> object, bool pretty = false);
+
 private:
-    v8::Handle<v8::String> toJSON(v8::Handle<v8::Value> object);
     Value v8ValueToValue(const v8::Handle<v8::Value>& value);
 
 private:

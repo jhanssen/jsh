@@ -7,16 +7,24 @@ static inline const char* ToCString(const v8::String::Utf8Value& value) {
 
 static void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
     bool first = true;
+    v8::Isolate* isolate = args.GetIsolate();
+    Interpreter* interpreter = static_cast<Interpreter*>(isolate->GetData(0));
     for (int i = 0; i < args.Length(); i++) {
-        v8::HandleScope handle_scope(args.GetIsolate());
+        v8::HandleScope handle_scope(isolate);
         if (first) {
             first = false;
         } else {
             printf(" ");
         }
-        v8::String::Utf8Value str(args[i]);
-        const char* cstr = ToCString(str);
-        printf("%s", cstr);
+        if (args[i]->IsObject()) {
+            v8::String::Utf8Value str(interpreter->toJSON(args[i], true));
+            const char* cstr = ToCString(str);
+            printf("%s", cstr);
+        } else {
+            v8::String::Utf8Value str(args[i]);
+            const char* cstr = ToCString(str);
+            printf("%s", cstr);
+        }
     }
     printf("\n");
     fflush(stdout);
@@ -51,6 +59,7 @@ Interpreter::Interpreter()
     std::call_once(v8Once, []() { v8::V8::InitializeICU(); });
 
     v8::Isolate* isolate = v8::Isolate::GetCurrent();
+    isolate->SetData(0, this);
 
     v8::HandleScope handle_scope(isolate);
     v8::Handle<v8::Context> context = createContext(isolate);
@@ -65,7 +74,7 @@ Interpreter::~Interpreter()
 {
 }
 
-v8::Handle<v8::String> Interpreter::toJSON(v8::Handle<v8::Value> object)
+v8::Handle<v8::String> Interpreter::toJSON(v8::Handle<v8::Value> object, bool pretty)
 {
     v8::Isolate* isolate = v8::Isolate::GetCurrent();
     v8::EscapableHandleScope handle_scope(isolate);
@@ -75,6 +84,10 @@ v8::Handle<v8::String> Interpreter::toJSON(v8::Handle<v8::Value> object)
     v8::Handle<v8::Object> JSON = global->Get(v8::String::NewFromUtf8(isolate, "JSON"))->ToObject();
     v8::Handle<v8::Function> stringify = v8::Handle<v8::Function>::Cast(JSON->Get(v8::String::NewFromUtf8(isolate, "stringify")));
 
+    if (pretty) {
+        v8::Handle<v8::Value> args[3] = { object, v8::Null(isolate), v8::Integer::New(isolate, 4) };
+        return handle_scope.Escape(stringify->Call(JSON, 3, args)->ToString());
+    }
     return handle_scope.Escape(stringify->Call(JSON, 1, &object)->ToString());
 }
 
