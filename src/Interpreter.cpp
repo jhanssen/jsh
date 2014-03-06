@@ -1,4 +1,5 @@
 #include "Interpreter.h"
+#include <mutex>
 
 static inline const char* ToCString(const v8::String::Utf8Value& value) {
     return *value ? *value : "<string conversion failed>";
@@ -46,7 +47,9 @@ static v8::Handle<v8::Context> createContext(v8::Isolate* isolate)
 
 Interpreter::Interpreter()
 {
-    v8::V8::InitializeICU();
+    static std::once_flag v8Once;
+    std::call_once(v8Once, []() { v8::V8::InitializeICU(); });
+
     v8::Isolate* isolate = v8::Isolate::GetCurrent();
 
     v8::HandleScope handle_scope(isolate);
@@ -55,20 +58,11 @@ Interpreter::Interpreter()
         fprintf(stderr, "Error creating context\n");
         return;
     }
-    context->Enter();
     mContext.Reset(isolate, context);
 }
 
 Interpreter::~Interpreter()
 {
-    if (!mContext.IsEmpty()) {
-        v8::Isolate* isolate = v8::Isolate::GetCurrent();
-        v8::HandleScope handle_scope(isolate);
-        v8::Local<v8::Context> context = v8::Local<v8::Context>::New(isolate, mContext);
-        context->Exit();
-    }
-    mContext.Reset();
-    v8::V8::Dispose();
 }
 
 v8::Handle<v8::String> Interpreter::toJSON(v8::Handle<v8::Value> object)
@@ -121,6 +115,10 @@ Value Interpreter::eval(const String& data, const String& name)
 {
     v8::Isolate* isolate = v8::Isolate::GetCurrent();
     v8::HandleScope scope(isolate);
+
+    v8::Local<v8::Context> context = v8::Local<v8::Context>::New(isolate, mContext);
+    v8::Context::Scope contextScope(context);
+
     v8::Handle<v8::String> fileName = v8::String::NewFromUtf8(isolate, name.constData());
     v8::Handle<v8::String> source = v8::String::NewFromUtf8(isolate, data.constData());
 
