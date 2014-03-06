@@ -1,0 +1,7 @@
+function(FIND_V8_LIB _out_ _dir_ _libname_)
+  file(GLOB_RECURSE V8LIBNAME "${_dir_}/lib${_libname_}*.a")
+  if (NOT EXISTS ${V8LIBNAME})
+    message(FATAL_ERROR "V8 library not found: ${_libname_} ${_out_}")
+  endif()
+  set(${_out_} ${V8LIBNAME} PARENT_SCOPE)
+endfunction()
