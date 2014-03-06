@@ -16,12 +16,14 @@ endif()
 
 if (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
   set(V8_CXXFLAGS "-stdlib=libc++ -std=c++0x")
+  set(V8_LDFLAGS "-stdlib=libc++")
 else ()
   set(V8_CXXFLAGS "-std=c++0x")
+  set(V8_LDFLAGS "")
 endif ()
 
 add_custom_target(v8 ${MAKE_COMMAND} dependencies
-		  COMMAND ${MAKE_COMMAND} CXXFLAGS=${V8_CXXFLAGS} GYPFLAGS="-Dmac_deployment_target=10.7" native
+		  COMMAND ${MAKE_COMMAND} LDFLAGS=${V8_LDFLAGS} CXXFLAGS=${V8_CXXFLAGS} GYPFLAGS="-Dmac_deployment_target=10.7" native
 		  WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/v8
                   )
 
