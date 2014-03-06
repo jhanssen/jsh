@@ -72,9 +72,12 @@ int Shell::exec()
     HistEventW ev;
     TokenizerW* tok;
 
+    const Path elFile = homeDirectory() + "/.jshel";
+    const Path histFile = homeDirectory() + "/.jshist";
+
     hist = history_winit();
     history_w(hist, &ev, H_SETSIZE, 100);
-    history_w(hist, &ev, H_LOAD, ".jshistory");
+    history_w(hist, &ev, H_LOAD, histFile.constData());
 
     tok = tok_winit(NULL);
 
@@ -91,7 +94,6 @@ int Shell::exec()
     // bind tab
     el_wset(el, EL_BIND, L"^I", L"ed-complete", NULL);
 
-    const Path elFile = homeDirectory() + "/.jshel";
     el_source(el, elFile.constData());
 
     while ((line = el_wgets(el, &numc)) && numc) {
@@ -138,7 +140,7 @@ int Shell::exec()
 
     el_end(el);
     tok_wend(tok);
-    history_w(hist, &ev, H_SAVE, ".jshistory");
+    history_w(hist, &ev, H_SAVE, histFile.constData());
     history_wend(hist);
 
     fprintf(stdout, "\n");
