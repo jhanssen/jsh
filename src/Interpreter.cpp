@@ -62,7 +62,9 @@ Interpreter::Interpreter()
 Interpreter::~Interpreter()
 {
     if (!mContext.IsEmpty()) {
-        v8::Local<v8::Context> context = v8::Local<v8::Context>::New(v8::Isolate::GetCurrent(), mContext);
+        v8::Isolate* isolate = v8::Isolate::GetCurrent();
+        v8::HandleScope handle_scope(isolate);
+        v8::Local<v8::Context> context = v8::Local<v8::Context>::New(isolate, mContext);
         context->Exit();
     }
     mContext.Reset();
