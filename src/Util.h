@@ -6,7 +6,7 @@
 namespace util {
 Path homeify(const String& path);
 Path findFile(const String& path, const String filename);
-Path homeDirectory();
+Path homeDirectory(const String& user = String());
 }
 
 #endif
