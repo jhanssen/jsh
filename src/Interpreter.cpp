@@ -184,6 +184,8 @@ v8::Handle<v8::String> InterpreterData::toJSON(v8::Handle<v8::Value> object, boo
 
 inline Value InterpreterData::v8ValueToValue(const v8::Handle<v8::Value>& value)
 {
+    v8::Isolate* isolate = v8::Isolate::GetCurrent();
+    v8::HandleScope scope(isolate);
     if (value.IsEmpty() || value->IsNull() || value->IsUndefined()) {
         return Value();
     } else if (value->IsTrue()) {
@@ -330,6 +332,7 @@ Value Interpreter::eval(const String& data, const String& name)
 
     return mData->v8ValueToValue(result);
 }
+
 Value Interpreter::call(const String &object, const String &function, const List<Value> &args, bool *ok)
 {
     v8::Isolate* isolate = v8::Isolate::GetCurrent();
@@ -355,10 +358,10 @@ Value Interpreter::call(const String &object, const String &function, const List
     if (ok)
         *ok = true;
 
-    v8::Handle<v8::Value> arguments[args.size()];
+    std::vector<v8::Handle<v8::Value> > arguments(args.size());
     for (int i=0; i<args.size(); ++i) {
         arguments[i] = mData->valueToV8Value(args.at(i));
     }
 
-    return mData->v8ValueToValue(handle_scope.Escape(func->Call(obj, args.size(), arguments)));
+    return mData->v8ValueToValue(handle_scope.Escape(func->Call(obj, arguments.size(), arguments.data())));
 }
