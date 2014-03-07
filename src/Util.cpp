@@ -35,6 +35,7 @@ Path homeify(const String& path)
         if (slash == -1)
             slash = copy.size();
         copy.replace(idx, slash - idx, homeDirectory(copy.mid(idx + 1, slash - idx - 1)));
+        idx += slash - idx;
     }
     return copy;
 }

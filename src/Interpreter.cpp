@@ -69,7 +69,7 @@ v8::Handle<v8::Value> InterpreterData::loadJSModule(v8::Isolate* isolate, const 
     v8::TryCatch try_catch;
     v8::Handle<v8::Script> script = v8::Script::Compile(source, fileName);
     if (script.IsEmpty()) {
-        error() << "script" << name << "didn't compile";
+        error() << "script" << name << "in" << file << "didn't compile";
         return handle_scope.Escape(v8::Local<v8::Value>());
     }
 
