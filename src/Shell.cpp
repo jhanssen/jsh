@@ -280,7 +280,7 @@ List<Shell::Token> Shell::tokenize(const String &line, String *err) const
             if (escapes % 2 == 0) {
                 const char *end = findUnescaped(str);
                 if (end) {
-                    str = ++end;
+                    str = end;
                 } else {
                     if (err)
                         *err = String::format<128>("Can't find end of quote that starts at position %d", str - start);
