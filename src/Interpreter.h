@@ -4,7 +4,8 @@
 #include <rct/Path.h>
 #include <rct/String.h>
 #include <rct/Value.h>
-#include <v8.h>
+
+class InterpreterData;
 
 class Interpreter
 {
@@ -15,13 +16,8 @@ public:
     Value load(const Path& path);
     Value eval(const String& script, const String& name = String());
 
-    v8::Handle<v8::String> toJSON(v8::Handle<v8::Value> object, bool pretty = false);
-
 private:
-    Value v8ValueToValue(const v8::Handle<v8::Value>& value);
-
-private:
-    v8::UniquePersistent<v8::Context> mContext;
+    InterpreterData* mData;
 };
 
 #endif

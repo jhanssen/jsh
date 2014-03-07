@@ -1,12 +1,12 @@
 #include "Shell.h"
 #include "Interpreter.h"
+#include "Util.h"
 #include <rct/Path.h>
 #include <histedit.h>
 #include <locale.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
-#include <pwd.h>
 #include <atomic>
 
 static std::atomic<int> gotsig;
@@ -48,20 +48,6 @@ static void sig(int i)
     gotsig.store(i);
 }
 
-static Path homeDirectory()
-{
-    if (char* homeEnv = getenv("HOME"))
-        return Path(homeEnv);
-
-    struct passwd pwent;
-    struct passwd* pwentp;
-    char buf[8192];
-
-    if (getpwuid_r(getuid(), &pwent, buf, sizeof(buf), &pwentp))
-        return Path();
-    return Path(pwent.pw_dir);
-}
-
 int Shell::exec()
 {
     setlocale(LC_ALL, "");
@@ -71,7 +57,7 @@ int Shell::exec()
     (void)signal(SIGHUP,  sig);
     (void)signal(SIGTERM, sig);
 
-    const Path home = homeDirectory();
+    const Path home = util::homeDirectory();
     const Path elFile = home + "/.jshel";
     const Path rcFile = home + "/.jshrc.js";
     const Path histFile = home + "/.jshist";

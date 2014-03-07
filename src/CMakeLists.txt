@@ -14,6 +14,7 @@ find_v8_lib(V8_NOSNAPSHOT_LIB ${V8_DIR} "v8_nosnapshot")
 set(CLIENT_SOURCES
   Interpreter.cpp
   Shell.cpp
+  Util.cpp
   main.cpp
   )
 

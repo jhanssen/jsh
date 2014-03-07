@@ -1,14 +1,28 @@
 #include "Interpreter.h"
+#include "Util.h"
 #include <mutex>
+#include <v8.h>
 
 static inline const char* ToCString(const v8::String::Utf8Value& value) {
     return *value ? *value : "<string conversion failed>";
 }
 
-static void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
+class InterpreterData
+{
+public:
+    v8::Handle<v8::String> toJSON(v8::Handle<v8::Value> object, bool pretty = false);
+    v8::Handle<v8::Value> loadJSModule(v8::Isolate* isolate, const char* name);
+    v8::Handle<v8::Value> loadNativeModule(v8::Isolate* isolate, const char* name);
+    Value v8ValueToValue(const v8::Handle<v8::Value>& value);
+
+    v8::UniquePersistent<v8::Context> context;
+};
+
+static void Print(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
     bool first = true;
     v8::Isolate* isolate = args.GetIsolate();
-    Interpreter* interpreter = static_cast<Interpreter*>(isolate->GetData(0));
+    InterpreterData* interpreter = static_cast<InterpreterData*>(isolate->GetData(0));
     for (int i = 0; i < args.Length(); i++) {
         v8::HandleScope handle_scope(isolate);
         if (first) {
@@ -30,6 +44,76 @@ static void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
     fflush(stdout);
 }
 
+v8::Handle<v8::Value> InterpreterData::loadJSModule(v8::Isolate* isolate, const char* name)
+{
+    v8::EscapableHandleScope handle_scope(isolate);
+    v8::Local<v8::Context> ctx = v8::Local<v8::Context>::New(isolate, context);
+    Path file = util::findFile("~/.jshmodules", name);
+    switch (file.type()) {
+    case Path::File:
+        break;
+    case Path::Directory:
+        file += "/module.js";
+        break;
+    }
+    if (!file.isFile())
+        return handle_scope.Escape(v8::Local<v8::Value>());
+
+    v8::Context::Scope contextScope(ctx);
+
+    v8::Handle<v8::String> fileName = v8::String::NewFromUtf8(isolate, name);
+    v8::Handle<v8::String> source = v8::String::NewFromUtf8(isolate, file.readAll().constData());
+
+    v8::TryCatch try_catch;
+    v8::Handle<v8::Script> script = v8::Script::Compile(source, fileName);
+    if (script.IsEmpty()) {
+        error() << "script" << name << "didn't compile";
+        return handle_scope.Escape(v8::Local<v8::Value>());
+    }
+
+    const v8::Local<v8::Value> result = script->Run();
+    if (try_catch.HasCaught()) {
+        const v8::Handle<v8::Message> msg = try_catch.Message();
+        {
+            const v8::String::Utf8Value str(msg->Get());
+            error() << ToCString(str);
+        }
+        {
+            const v8::String::Utf8Value str(msg->GetScriptResourceName());
+            error() << String::format<64>("At %s:%d", ToCString(str), msg->GetLineNumber());
+        }
+        return handle_scope.Escape(v8::Local<v8::Value>());
+    }
+    return handle_scope.Escape(result);
+}
+
+v8::Handle<v8::Value> InterpreterData::loadNativeModule(v8::Isolate* isolate, const char* name)
+{
+    v8::EscapableHandleScope handle_scope(isolate);
+    return handle_scope.Escape(v8::Local<v8::Value>());
+}
+
+static void Require(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    InterpreterData* interpreter = static_cast<InterpreterData*>(isolate->GetData(0));
+    v8::HandleScope handle_scope(isolate);
+    v8::Handle<v8::Value> ret;
+    if (args.Length() == 1 && args[0]->IsString()) {
+        v8::String::Utf8Value str(args[0]);
+        ret = interpreter->loadJSModule(isolate, ToCString(str));
+        if (!ret.IsEmpty()) {
+            args.GetReturnValue().Set(ret);
+            return;
+        }
+        ret = interpreter->loadNativeModule(isolate, ToCString(str));
+        if (!ret.IsEmpty()) {
+            args.GetReturnValue().Set(ret);
+            return;
+        }
+    }
+}
+
 static v8::Handle<v8::Context> createContext(v8::Isolate* isolate)
 {
     // Create a template for the global object.
@@ -37,6 +121,8 @@ static v8::Handle<v8::Context> createContext(v8::Isolate* isolate)
     // Bind the global 'print' function to the C++ Print callback.
     global->Set(v8::String::NewFromUtf8(isolate, "print"),
                 v8::FunctionTemplate::New(isolate, Print));
+    global->Set(v8::String::NewFromUtf8(isolate, "require"),
+                v8::FunctionTemplate::New(isolate, Require));
     // Bind the global 'read' function to the C++ Read callback.
     // global->Set(v8::String::NewFromUtf8(isolate, "read"),
     //             v8::FunctionTemplate::New(isolate, Read));
@@ -54,12 +140,13 @@ static v8::Handle<v8::Context> createContext(v8::Isolate* isolate)
 }
 
 Interpreter::Interpreter()
+    : mData(new InterpreterData)
 {
     static std::once_flag v8Once;
     std::call_once(v8Once, []() { v8::V8::InitializeICU(); });
 
     v8::Isolate* isolate = v8::Isolate::GetCurrent();
-    isolate->SetData(0, this);
+    isolate->SetData(0, mData);
 
     v8::HandleScope handle_scope(isolate);
     v8::Handle<v8::Context> context = createContext(isolate);
@@ -67,19 +154,20 @@ Interpreter::Interpreter()
         fprintf(stderr, "Error creating context\n");
         return;
     }
-    mContext.Reset(isolate, context);
+    mData->context.Reset(isolate, context);
 }
 
 Interpreter::~Interpreter()
 {
+    delete mData;
 }
 
-v8::Handle<v8::String> Interpreter::toJSON(v8::Handle<v8::Value> object, bool pretty)
+v8::Handle<v8::String> InterpreterData::toJSON(v8::Handle<v8::Value> object, bool pretty)
 {
     v8::Isolate* isolate = v8::Isolate::GetCurrent();
     v8::EscapableHandleScope handle_scope(isolate);
-    v8::Local<v8::Context> context = v8::Local<v8::Context>::New(isolate, mContext);
-    v8::Handle<v8::Object> global = context->Global();
+    v8::Local<v8::Context> ctx = v8::Local<v8::Context>::New(isolate, context);
+    v8::Handle<v8::Object> global = ctx->Global();
 
     v8::Handle<v8::Object> JSON = global->Get(v8::String::NewFromUtf8(isolate, "JSON"))->ToObject();
     v8::Handle<v8::Function> stringify = v8::Handle<v8::Function>::Cast(JSON->Get(v8::String::NewFromUtf8(isolate, "stringify")));
@@ -91,7 +179,7 @@ v8::Handle<v8::String> Interpreter::toJSON(v8::Handle<v8::Value> object, bool pr
     return handle_scope.Escape(stringify->Call(JSON, 1, &object)->ToString());
 }
 
-inline Value Interpreter::v8ValueToValue(const v8::Handle<v8::Value>& value)
+inline Value InterpreterData::v8ValueToValue(const v8::Handle<v8::Value>& value)
 {
     if (value.IsEmpty() || value->IsNull() || value->IsUndefined())
         return Value();
@@ -129,7 +217,7 @@ Value Interpreter::eval(const String& data, const String& name)
     v8::Isolate* isolate = v8::Isolate::GetCurrent();
     v8::HandleScope scope(isolate);
 
-    v8::Local<v8::Context> context = v8::Local<v8::Context>::New(isolate, mContext);
+    v8::Local<v8::Context> context = v8::Local<v8::Context>::New(isolate, mData->context);
     v8::Context::Scope contextScope(context);
 
     v8::Handle<v8::String> fileName = v8::String::NewFromUtf8(isolate, name.constData());
@@ -156,5 +244,5 @@ Value Interpreter::eval(const String& data, const String& name)
         return Value();
     }
 
-    return v8ValueToValue(result);
+    return mData->v8ValueToValue(result);
 }
