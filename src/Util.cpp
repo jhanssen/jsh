@@ -18,12 +18,15 @@ Path homeDirectory()
     return Path(pwent.pw_dir);
 }
 
+Path homeify(const String& path)
+{
+}
+
 Path findFile(const String& path, const String filename)
 {
     const List<String> candidates = path.split(':');
     for (const String& cand : candidates) {
-        Path pcand = path + "/" + filename;
-        //pcand.replace("~", util::homeDirectory());
+        Path pcand = homeify(path + "/" + filename);
         if (pcand.exists())
             return pcand;
     }
