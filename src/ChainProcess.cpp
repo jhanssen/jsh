@@ -29,7 +29,7 @@ void ChainProcess::processStdout(Process*)
 
 void ChainProcess::processStderr(Process*)
 {
-    String data = mProcess->readAllStdOut();
+    String data = mProcess->readAllStdErr();
     if (errIsOut())
         stdout()(std::move(data));
     else
