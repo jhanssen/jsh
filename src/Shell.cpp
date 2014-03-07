@@ -9,6 +9,8 @@
 #include <signal.h>
 #include <atomic>
 
+extern char **environ;
+
 static std::atomic<int> gotsig;
 static bool continuation = false;
 
