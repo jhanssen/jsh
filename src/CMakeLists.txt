@@ -12,6 +12,8 @@ find_v8_lib(V8_BASE_LIB ${V8_DIR} "v8_base")
 find_v8_lib(V8_NOSNAPSHOT_LIB ${V8_DIR} "v8_nosnapshot")
 
 set(CLIENT_SOURCES
+  Chain.cpp
+  ChainProcess.cpp
   Interpreter.cpp
   Shell.cpp
   Util.cpp
