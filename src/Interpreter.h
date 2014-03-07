@@ -13,9 +13,10 @@ public:
     Interpreter();
     ~Interpreter();
 
-    Value load(const Path& path);
-    Value eval(const String& script, const String& name = String());
+    Value load(const Path &path);
+    Value eval(const String &script, const String &name = String());
 
+    Value call(const String &object, const String &function, const List<Value> &args, bool *ok = 0);
 private:
     InterpreterData* mData;
 };

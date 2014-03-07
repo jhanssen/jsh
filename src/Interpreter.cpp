@@ -14,6 +14,7 @@ public:
     v8::Handle<v8::Value> loadJSModule(v8::Isolate* isolate, const char* name);
     v8::Handle<v8::Value> loadNativeModule(v8::Isolate* isolate, const char* name);
     Value v8ValueToValue(const v8::Handle<v8::Value>& value);
+    v8::Handle<v8::Value> valueToV8Value(const Value& value);
 
     v8::UniquePersistent<v8::Context> context;
 };
@@ -183,26 +184,107 @@ v8::Handle<v8::String> InterpreterData::toJSON(v8::Handle<v8::Value> object, boo
 
 inline Value InterpreterData::v8ValueToValue(const v8::Handle<v8::Value>& value)
 {
-    if (value.IsEmpty() || value->IsNull() || value->IsUndefined())
+    if (value.IsEmpty() || value->IsNull() || value->IsUndefined()) {
         return Value();
-    else if (value->IsTrue())
+    } else if (value->IsTrue()) {
         return Value(true);
-    else if (value->IsFalse())
+    } else if (value->IsFalse()) {
         return Value(false);
-    else if (value->IsInt32())
+    } else if (value->IsInt32()) {
         return Value(value->ToInt32()->Value());
-    else if (value->IsNumber())
+    } else if (value->IsNumber()) {
         return Value(value->ToNumber()->Value());
-    else if (value->IsString()) {
+    } else if (value->IsString()) {
         const v8::String::Utf8Value str(value);
         return Value(ToCString(str));
+    } else if (value->IsArray()) {
+        v8::Handle<v8::Array> array = v8::Handle<v8::Array>::Cast(value);
+        const int len = array->Length();
+        List<Value> list(len);
+        for (int i = 0; i < len; ++i)
+            list[i] = v8ValueToValue(array->Get(i));
+        return list;
     } else if (value->IsObject()) {
-        const v8::String::Utf8Value str(toJSON(value));
-        return Value::fromJSON(ToCString(str));
+        v8::Handle<v8::Object> object = v8::Handle<v8::Object>::Cast(value);
+        v8::Local<v8::Array> properties = object->GetOwnPropertyNames();
+        Map<String, Value> map;
+        for(size_t i = 0; i < properties->Length(); ++i) {
+            const v8::Handle<v8::Value> key = properties->Get(i);
+            const v8::String::Utf8Value str(key);
+            map[*str] = v8ValueToValue(object->Get(key));
+        }
+        return map;
     } else {
         error() << "Unknown v8 value in Interpreter::v8ValueToValue";
     }
     return Value();
+}
+
+inline v8::Handle<v8::Value> InterpreterData::valueToV8Value(const Value& value)
+{
+    v8::Isolate* isolate = v8::Isolate::GetCurrent();
+    v8::EscapableHandleScope handle_scope(isolate);
+    v8::Local<v8::Context> ctx = v8::Local<v8::Context>::New(isolate, context);
+    // v8::Handle<v8::Function> stringify = v8::Handle<v8::Function>::Cast(JSON->Get(v8::String::NewFromUtf8(isolate, "stringify")));
+
+    switch (value.type()) {
+    case Value::Type_Pointer:
+        assert(0);
+        // fall through
+    case Value::Type_Invalid:
+        // return handle_scope.Escape(v8::Undefined::New(isolate));
+    case Value::Type_Boolean:
+        // return handle_scope.Escape(v8::Boolean::New(value.toBool()));
+    case Value::Type_Integer:
+    case Value::Type_Double:
+    case Value::Type_String:
+    case Value::Type_Map:
+    case Value::Type_List:
+        break;
+    }
+    // if (pretty) {
+    //     v8::Handle<v8::Value> args[3] = { object, v8::Null(isolate), v8::Integer::New(isolate, 4) };
+    //     return handle_scope.Escape(stringify->Call(JSON, 3, args)->ToString());
+    // }
+    // return handle_scope.Escape(stringify->Call(JSON, 1, &object)->ToString());
+
+    // if (value.isNull()) {
+    //     return
+    // }
+    // if (value.IsEmpty() || value->IsNull() || value->IsUndefined()) {
+    //     return Value();
+    // } else if (value->IsTrue()) {
+    //     return Value(true);
+    // } else if (value->IsFalse()) {
+    //     return Value(false);
+    // } else if (value->IsInt32()) {
+    //     return Value(value->ToInt32()->Value());
+    // } else if (value->IsNumber()) {
+    //     return Value(value->ToNumber()->Value());
+    // } else if (value->IsString()) {
+    //     const v8::String::Utf8Value str(value);
+    //     return Value(ToCString(str));
+    // } else if (value->IsArray()) {
+    //     v8::Handle<v8::Array> array = v8::Handle<v8::Array>::Cast(value);
+    //     const int len = array->Length();
+    //     List<Value> list(len);
+    //     for (int i = 0; i < len; ++i)
+    //         list[i] = v8ValueToValue(array->Get(i));
+    //     return list;
+    // } else if (value->IsObject()) {
+    //     v8::Handle<v8::Object> object = v8::Handle<v8::Object>::Cast(value);
+    //     v8::Local<v8::Array> properties = object->GetOwnPropertyNames();
+    //     Map<String, Value> map;
+    //     for(size_t i = 0; i < properties->Length(); ++i) {
+    //         const v8::Handle<v8::Value> key = properties->Get(i);
+    //         const v8::String::Utf8Value str(key);
+    //         map[*str] = v8ValueToValue(object->Get(key));
+    //     }
+    //     return map;
+    // } else {
+    //     error() << "Unknown v8 value in Interpreter::v8ValueToValue";
+    // }
+    // return Value();
 }
 
 Value Interpreter::load(const Path& path)
@@ -247,4 +329,36 @@ Value Interpreter::eval(const String& data, const String& name)
     }
 
     return mData->v8ValueToValue(result);
+}
+Value Interpreter::call(const String &object, const String &function, const List<Value> &args, bool *ok)
+{
+    v8::Isolate* isolate = v8::Isolate::GetCurrent();
+    v8::EscapableHandleScope handle_scope(isolate);
+    v8::Local<v8::Context> ctx = v8::Local<v8::Context>::New(isolate, mData->context);
+    v8::Handle<v8::Object> global = ctx->Global();
+    v8::Handle<v8::Object> obj = global;
+
+    v8::Handle<v8::Function> func;
+    if (!object.isEmpty()) {
+        obj = global->Get(v8::String::NewFromUtf8(isolate, object.constData()))->ToObject();
+        if (obj.IsEmpty())
+            func = v8::Handle<v8::Function>::Cast(obj->Get(v8::String::NewFromUtf8(isolate, function.constData())));
+    } else {
+        func = v8::Handle<v8::Function>::Cast(global->Get(v8::String::NewFromUtf8(isolate, function.constData())));
+    }
+    if (func.IsEmpty()) {
+        if (!ok)
+            *ok = false;
+        return Value();
+    }
+
+    if (ok)
+        *ok = true;
+
+    v8::Handle<v8::Value> arguments[args.size()];
+    for (int i=0; i<args.size(); ++i) {
+        arguments[i] = mData->valueToV8Value(args.at(i));
+    }
+
+    return mData->v8ValueToValue(handle_scope.Escape(func->Call(obj, args.size(), arguments)));
 }

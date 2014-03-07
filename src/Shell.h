@@ -26,6 +26,12 @@ public:
 
     List<Token> tokenize(const String &line, String *error = 0) const;
     String env(const String &var) const { return mEnviron.value(var); }
+    enum CompletionResult {
+        Completion_Refresh,
+        Completion_Redisplay,
+        Completion_Error
+    };
+    CompletionResult complete(const String &line, int cursor, String *insert);
 private:
     bool expandEnvironment(String &string, String *err) const;
     void process(const List<Token> &tokens);

@@ -11,6 +11,7 @@
 
 static std::atomic<int> gotsig;
 static bool continuation = false;
+
 static wchar_t* prompt(EditLine* el)
 {
     static wchar_t a[] = L"\1\033[7m\1Edit$\1\033[0m\1 ";
@@ -19,10 +20,25 @@ static wchar_t* prompt(EditLine* el)
     return continuation ? b : a;
 }
 
-static unsigned char complete(EditLine *el, int ch)
+static unsigned char complete(EditLine *el, int)
 {
-    fprintf(stderr, "complete\n");
-    return 0; // CC_ERROR, CC_REFRESH
+    Shell *shell = 0;
+    el_wget(el, EL_CLIENTDATA, &shell);
+    assert(shell);
+    String insert;
+    const LineInfoW *lineInfo = el_wline(el);
+    String line = util::wcharToUtf8(lineInfo->buffer);
+    String rest = util::wcharToUtf8(lineInfo->cursor); // ### there must be a better way to do this
+    const Shell::CompletionResult res = shell->complete(line, line.size() - rest.size(), &insert);
+    if (!insert.isEmpty()) {
+        el_winsertstr(el, util::utf8ToWChar(insert).c_str());
+    }
+
+    switch (res) {
+    case Shell::Completion_Refresh: return CC_REFRESH;
+    case Shell::Completion_Redisplay: return CC_REDISPLAY;
+    case Shell::Completion_Error: return CC_ERROR;
+    }
 }
 
 const char* my_wcstombs(const wchar_t *wstr)
@@ -83,15 +99,22 @@ int Shell::exec()
     history_w(hist, &ev, H_LOAD, histFile.constData());
 
     el = el_init(mArgv[0], stdin, stdout, stderr);
+    el_wset(el, EL_CLIENTDATA, this);
 
     el_wset(el, EL_EDITOR, L"emacs");
     el_wset(el, EL_SIGNAL, 1);
     el_wset(el, EL_PROMPT_ESC, prompt, '\1');
+    if (const char *home = getenv("HOME")) {
+        Path rc = home;
+        rc += "/.editrc";
+        if (rc.exists())
+            el_source(el, rc.constData());
+    }
 
     el_wset(el, EL_HIST, history_w, hist);
 
     // complete
-    el_wset(el, EL_ADDFN, L"ed-complete", L"Complete argument", complete);
+    el_wset(el, EL_ADDFN, L"ed-complete", L"Complete argument", ::complete);
     // bind tab
     el_wset(el, EL_BIND, L"^I", L"ed-complete", NULL);
 
@@ -216,6 +239,7 @@ static void addPrev(List<Shell::Token> &tokens, const char *&last, const char *s
     if (last && last < str) {
         tokens.append({Shell::Token::Command, String(last, str - last)});
         eatEscapes(tokens.last().string);
+        tokens.last().string.chomp(' ');
         last = 0;
     }
 }
@@ -321,6 +345,7 @@ void Shell::process(const List<Token> &tokens)
         error() << String::format<128>("[%s] %s", token.string.constData(), names[token.type]);
     }
 }
+
 enum EnvironmentCharFlag {
     Invalid,
     Valid,
@@ -380,5 +405,9 @@ bool Shell::expandEnvironment(String &string, String *err) const
             break;
         }
     }
+}
 
+Shell::CompletionResult Shell::complete(const String &line, int cursor, String *insert)
+{
+    // Value value =
 }
