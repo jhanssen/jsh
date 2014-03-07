@@ -33,7 +33,11 @@ link_directories(
   ${CMAKE_CURRENT_LIST_DIR}/../3rdparty/v8/out/native/obj.host/third_party/icu
   )
 
+if (CMAKE_SYSTEM_NAME MATCHES "Darwin")
+  set(SYSTEM_LIBS iconv)
+endif ()
+
 add_executable(jsh ${CLIENT_SOURCES})
-target_link_libraries(jsh pthread rct edit termcap ${V8_BASE_LIB} ${V8_NOSNAPSHOT_LIB} iconv icui18n icuuc icudata)
+target_link_libraries(jsh pthread rct edit termcap ${V8_BASE_LIB} ${V8_NOSNAPSHOT_LIB} ${SYSTEM_LIBS} icui18n icuuc icudata)
 
 #add_dependencies(jsh v8)
