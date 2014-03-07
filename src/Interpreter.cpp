@@ -55,6 +55,8 @@ v8::Handle<v8::Value> InterpreterData::loadJSModule(v8::Isolate* isolate, const 
     case Path::Directory:
         file += "/module.js";
         break;
+    default:
+        break;
     }
     if (!file.isFile())
         return handle_scope.Escape(v8::Local<v8::Value>());
