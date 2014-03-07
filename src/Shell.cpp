@@ -239,7 +239,7 @@ static inline void eatEscapes(String &string)
 static void addPrev(List<Shell::Token> &tokens, const char *&last, const char *str)
 {
     if (last && last < str) {
-        tokens.append({Shell::Token::Command, String(last, str - last)});
+        tokens.append({Shell::Token::Command, String(last, str - last + 1)});
         eatEscapes(tokens.last().string);
         tokens.last().string.chomp(' ');
         last = 0;
