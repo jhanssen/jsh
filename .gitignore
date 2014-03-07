@@ -5,3 +5,4 @@ CMakeCache.txt
 rules.ninja
 build.ninja
 jsh
+/src/.gdb_history
