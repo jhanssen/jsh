@@ -1,6 +1,7 @@
 #include "Shell.h"
 #include "Interpreter.h"
 #include "Util.h"
+#include <rct/EventLoop.h>
 #include <rct/Path.h>
 #include <histedit.h>
 #include <locale.h>
@@ -9,6 +10,9 @@
 #include <signal.h>
 #include <assert.h>
 #include <atomic>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
 
 extern char **environ;
 
@@ -72,6 +76,29 @@ static void sig(int i)
 
 int Shell::exec()
 {
+    EventLoop::SharedPtr loop;
+    std::thread thr;
+    {
+        std::mutex mutex;
+        std::condition_variable cond;
+        bool done = false;
+        thr = std::thread([&loop, &mutex, &cond, &done]() {
+                loop = std::make_shared<EventLoop>();
+                loop->init(EventLoop::MainEventLoop);
+                {
+                    std::unique_lock<std::mutex> locker(mutex);
+                    done = true;
+                    cond.notify_one();
+                }
+                loop->exec();
+        });
+        std::unique_lock<std::mutex> locker(mutex);
+        while (!done) {
+            cond.wait(locker);
+        }
+        assert(loop);
+    }
+
     setlocale(LC_ALL, "");
     for (int i=0; environ[i]; ++i) {
         char *eq = strchr(environ[i], '=');
@@ -171,6 +198,10 @@ int Shell::exec()
     fprintf(stdout, "\n");
 
     mInterpreter = 0;
+
+    loop->quit();
+    thr.join();
+
     return 0;
 }
 
