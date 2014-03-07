@@ -17,6 +17,8 @@ public:
     Value eval(const String &script, const String &name = String());
 
     Value call(const String &object, const String &function, const List<Value> &args, bool *ok = 0);
+    Value call(const String &function, const List<Value> &args, bool *ok = 0) { return call(String(), function, args, ok); }
+
 private:
     InterpreterData* mData;
 };

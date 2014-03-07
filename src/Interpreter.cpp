@@ -182,10 +182,8 @@ v8::Handle<v8::String> InterpreterData::toJSON(v8::Handle<v8::Value> object, boo
     return handle_scope.Escape(stringify->Call(JSON, 1, &object)->ToString());
 }
 
-inline Value InterpreterData::v8ValueToValue(const v8::Handle<v8::Value>& value)
+static Value v8ValueToValue_helper(v8::Isolate *isolate, const v8::Handle<v8::Value> &value)
 {
-    v8::Isolate* isolate = v8::Isolate::GetCurrent();
-    v8::HandleScope scope(isolate);
     if (value.IsEmpty() || value->IsNull() || value->IsUndefined()) {
         return Value();
     } else if (value->IsTrue()) {
@@ -204,7 +202,7 @@ inline Value InterpreterData::v8ValueToValue(const v8::Handle<v8::Value>& value)
         const int len = array->Length();
         List<Value> list(len);
         for (int i = 0; i < len; ++i)
-            list[i] = v8ValueToValue(array->Get(i));
+            list[i] = v8ValueToValue_helper(isolate, array->Get(i));
         return list;
     } else if (value->IsObject()) {
         v8::Handle<v8::Object> object = v8::Handle<v8::Object>::Cast(value);
@@ -213,7 +211,7 @@ inline Value InterpreterData::v8ValueToValue(const v8::Handle<v8::Value>& value)
         for(size_t i = 0; i < properties->Length(); ++i) {
             const v8::Handle<v8::Value> key = properties->Get(i);
             const v8::String::Utf8Value str(key);
-            map[*str] = v8ValueToValue(object->Get(key));
+            map[*str] = v8ValueToValue_helper(isolate, object->Get(key));
         }
         return map;
     } else {
@@ -222,71 +220,57 @@ inline Value InterpreterData::v8ValueToValue(const v8::Handle<v8::Value>& value)
     return Value();
 }
 
+inline Value InterpreterData::v8ValueToValue(const v8::Handle<v8::Value>& value)
+{
+    v8::Isolate* isolate = v8::Isolate::GetCurrent();
+    v8::HandleScope scope(isolate);
+    return v8ValueToValue_helper(isolate, value);
+}
+
+static v8::Handle<v8::Value> valueToV8Value_helper(v8::Isolate *isolate, const Value& value)
+{
+    v8::Handle<v8::Value> result;
+    switch (value.type()) {
+    case Value::Type_String:
+        result = v8::String::NewFromUtf8(isolate, value.toString().constData());
+        break;
+    case Value::Type_List: {
+        const int sz = value.count();
+        v8::Handle<v8::Array> array = v8::Array::New(isolate, sz);
+        auto it = value.listBegin();
+        for (int i=0; i<sz; ++i) {
+            array->Set(i, valueToV8Value_helper(isolate, *it++));
+        }
+        result = array;
+        break; }
+    case Value::Type_Map: {
+        v8::Handle<v8::Object> object = v8::Object::New(isolate);
+        for (auto it = value.begin(); it != value.end(); ++it)
+            object->Set(v8::String::NewFromUtf8(isolate, it->first.constData()), valueToV8Value_helper(isolate, it->second));
+        result = object;
+        break; }
+    case Value::Type_Integer:
+        result = v8::Integer::New(isolate, value.toInteger());
+        break;
+    case Value::Type_Double:
+        result = v8::Number::New(isolate, value.toDouble());
+        break;
+    case Value::Type_Boolean:
+        result = v8::Boolean::New(isolate, value.toBool());
+        break;
+    case Value::Type_Invalid:
+        result = v8::Undefined(isolate);
+        break;
+    }
+    return result;
+}
+
 inline v8::Handle<v8::Value> InterpreterData::valueToV8Value(const Value& value)
 {
     v8::Isolate* isolate = v8::Isolate::GetCurrent();
     v8::EscapableHandleScope handle_scope(isolate);
-    v8::Local<v8::Context> ctx = v8::Local<v8::Context>::New(isolate, context);
-    // v8::Handle<v8::Function> stringify = v8::Handle<v8::Function>::Cast(JSON->Get(v8::String::NewFromUtf8(isolate, "stringify")));
-
-    switch (value.type()) {
-    case Value::Type_Pointer:
-        assert(0);
-        // fall through
-    case Value::Type_Invalid:
-        // return handle_scope.Escape(v8::Undefined::New(isolate));
-    case Value::Type_Boolean:
-        // return handle_scope.Escape(v8::Boolean::New(value.toBool()));
-    case Value::Type_Integer:
-    case Value::Type_Double:
-    case Value::Type_String:
-    case Value::Type_Map:
-    case Value::Type_List:
-        break;
-    }
-    // if (pretty) {
-    //     v8::Handle<v8::Value> args[3] = { object, v8::Null(isolate), v8::Integer::New(isolate, 4) };
-    //     return handle_scope.Escape(stringify->Call(JSON, 3, args)->ToString());
-    // }
-    // return handle_scope.Escape(stringify->Call(JSON, 1, &object)->ToString());
-
-    // if (value.isNull()) {
-    //     return
-    // }
-    // if (value.IsEmpty() || value->IsNull() || value->IsUndefined()) {
-    //     return Value();
-    // } else if (value->IsTrue()) {
-    //     return Value(true);
-    // } else if (value->IsFalse()) {
-    //     return Value(false);
-    // } else if (value->IsInt32()) {
-    //     return Value(value->ToInt32()->Value());
-    // } else if (value->IsNumber()) {
-    //     return Value(value->ToNumber()->Value());
-    // } else if (value->IsString()) {
-    //     const v8::String::Utf8Value str(value);
-    //     return Value(ToCString(str));
-    // } else if (value->IsArray()) {
-    //     v8::Handle<v8::Array> array = v8::Handle<v8::Array>::Cast(value);
-    //     const int len = array->Length();
-    //     List<Value> list(len);
-    //     for (int i = 0; i < len; ++i)
-    //         list[i] = v8ValueToValue(array->Get(i));
-    //     return list;
-    // } else if (value->IsObject()) {
-    //     v8::Handle<v8::Object> object = v8::Handle<v8::Object>::Cast(value);
-    //     v8::Local<v8::Array> properties = object->GetOwnPropertyNames();
-    //     Map<String, Value> map;
-    //     for(size_t i = 0; i < properties->Length(); ++i) {
-    //         const v8::Handle<v8::Value> key = properties->Get(i);
-    //         const v8::String::Utf8Value str(key);
-    //         map[*str] = v8ValueToValue(object->Get(key));
-    //     }
-    //     return map;
-    // } else {
-    //     error() << "Unknown v8 value in Interpreter::v8ValueToValue";
-    // }
-    // return Value();
+    v8::Local<v8::Value> local(valueToV8Value_helper(isolate, value));
+    return handle_scope.Escape(local);
 }
 
 Value Interpreter::load(const Path& path)

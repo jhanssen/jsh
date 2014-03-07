@@ -11,7 +11,7 @@ public:
     virtual ~Chain() { }
 
     void setStdErrToStdOut(bool errToOut) { mErrToOut = true; }
-    void chain(Chain* chain) { mNext = chain; chain->init(this); }
+    void chain(Chain* chain) { assert(!mNext); mNext = chain; chain->init(this); }
 
     void exec();
 
@@ -39,7 +39,6 @@ private:
     bool mErrToOut;
 
     Chain* mNext;
-
     friend class ChainProcess;
 };
 

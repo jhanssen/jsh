@@ -25,6 +25,7 @@ include_directories(
   ${CMAKE_CURRENT_LIST_DIR}/../3rdparty/rct
   ${CMAKE_CURRENT_LIST_DIR}/../3rdparty/rct/include/rct
   ${CMAKE_CURRENT_LIST_DIR}/../3rdparty/libedit/src
+  ${CMAKE_CURRENT_LIST_DIR}/../3rdparty/utf8/source
   ${CMAKE_CURRENT_LIST_DIR}/../3rdparty/v8/include
   )
 

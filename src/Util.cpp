@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <iconv.h>
 #include <mutex>
+#include <utf8.h>
 
 namespace util {
 
@@ -114,4 +115,15 @@ std::wstring utf8ToWChar(const String& data)
     return utf8ToWChar(data.constData(), data.size());
 }
 
+int utf8CharacterCount(const String &data)
+{
+    const char *text = data.constData();
+    const char *end = text + data.size();
+    int ret = 0;
+    while (text < end) {
+        utf8::unchecked::next(text);
+        ++ret;
+    }
+    return ret;
+}
 }

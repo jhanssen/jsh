@@ -29,9 +29,12 @@ static unsigned char complete(EditLine *el, int)
     assert(shell);
     String insert;
     const LineInfoW *lineInfo = el_wline(el);
-    String line = util::wcharToUtf8(lineInfo->buffer);
-    String rest = util::wcharToUtf8(lineInfo->cursor); // ### there must be a better way to do this
-    const Shell::CompletionResult res = shell->complete(line, line.size() - rest.size(), &insert);
+    const String line = util::wcharToUtf8(lineInfo->buffer);
+    const String rest = util::wcharToUtf8(lineInfo->cursor);
+    const int len = util::utf8CharacterCount(line);
+    const int cursorPos = len - util::utf8CharacterCount(rest);
+
+    const Shell::CompletionResult res = shell->complete(line, cursorPos, insert);
     if (!insert.isEmpty()) {
         el_winsertstr(el, util::utf8ToWChar(insert).c_str());
     }
@@ -88,6 +91,7 @@ int Shell::exec()
     const Path histFile = home + "/.jshist";
 
     Interpreter interpreter;
+    mInterpreter = &interpreter;
     interpreter.load(rcFile);
 
     EditLine* el = nullptr;
@@ -150,23 +154,7 @@ int Shell::exec()
             if (l.endsWith('\n'))
                 l.chop(1);
 
-            int max = 10;
-            while (max--) {
-                if (!expandEnvironment(l, &err)) {
-                    break;
-                }
-            }
-            if (!err.isEmpty()) {
-                error() << err;
-                continue;
-            }
-
-            if (max < 0) {
-                error() << "Too many recursive environment variable expansions";
-                continue;
-            }
-
-            const List<Token> tokens = tokenize(l, &err);
+            const List<Token> tokens = tokenize(l, Tokenize_CollapseWhitespace|Tokenize_ExpandEnvironmentVariables, err);
             if (!err.isEmpty()) {
                 error() << "Got error" << err;
             } else if (!tokens.isEmpty()) {
@@ -181,6 +169,7 @@ int Shell::exec()
 
     fprintf(stdout, "\n");
 
+    mInterpreter = 0;
     return 0;
 }
 
@@ -236,18 +225,39 @@ static inline void eatEscapes(String &string)
     }
 }
 
-static void addPrev(List<Shell::Token> &tokens, const char *&last, const char *str)
+static void addPrev(List<Shell::Token> &tokens, const char *&last, const char *str, unsigned int flags)
 {
     if (last && last < str) {
         tokens.append({Shell::Token::Command, String(last, str - last + 1)});
-        eatEscapes(tokens.last().string);
-        tokens.last().string.chomp(' ');
+        if (flags & Shell::Tokenize_CollapseWhitespace) {
+            eatEscapes(tokens.last().string);
+            tokens.last().string.chomp(' ');
+        }
         last = 0;
     }
 }
 
-List<Shell::Token> Shell::tokenize(const String &line, String *err) const
+List<Shell::Token> Shell::tokenize(String line, unsigned int flags, String &err) const
 {
+    assert(err.isEmpty());
+    if (flags & Tokenize_ExpandEnvironmentVariables) {
+        int max = 10;
+        while (max--) {
+            if (!expandEnvironment(line, err)) {
+                break;
+            }
+        }
+        if (!err.isEmpty()) {
+            return List<Token>();
+        }
+
+        if (max < 0) {
+            err = "Too many recursive environment variable expansions";
+            return List<Token>();
+        }
+    }
+
+
     List<Token> tokens;
     const char *start = line.constData();
     const char *str = start;
@@ -255,7 +265,8 @@ List<Shell::Token> Shell::tokenize(const String &line, String *err) const
     int escapes = 0;
     while (*str) {
         // error() << "checking" << *str;
-        if (!last && !isspace(static_cast<unsigned char>(*str)))
+        // ### isspace needs to be utf8-aware
+        if (!last && (!(flags & Tokenize_CollapseWhitespace) || !isspace(static_cast<unsigned char>(*str))))
             last = str;
         if (*str == '\\') {
             ++escapes;
@@ -265,11 +276,10 @@ List<Shell::Token> Shell::tokenize(const String &line, String *err) const
 
         switch (*str) {
         case '{': {
-            addPrev(tokens, last, str);
+            addPrev(tokens, last, str, flags);
             const char *end = findEndBrace(str + 1);
             if (!end) {
-                if (err)
-                    *err = String::format<128>("Can't find end of curly brace that starts at position %d", str - start);
+                err = String::format<128>("Can't find end of curly brace that starts at position %d", str - start);
                 return List<Token>();
             }
             tokens.append({Token::Javascript, String(str, end - str + 1)});
@@ -282,15 +292,14 @@ List<Shell::Token> Shell::tokenize(const String &line, String *err) const
                 if (end) {
                     str = end;
                 } else {
-                    if (err)
-                        *err = String::format<128>("Can't find end of quote that starts at position %d", str - start);
+                    err = String::format<128>("Can't find end of quote that starts at position %d", str - start);
                     return List<Token>();
                 }
             }
             break; }
         case '|':
             if (escapes % 2 == 0) {
-                addPrev(tokens, last, str);
+                addPrev(tokens, last, str, flags);
                 if (str[1] == '|') {
                     tokens.append({Token::Operator, String(str, 2)});
                     ++str;
@@ -301,7 +310,7 @@ List<Shell::Token> Shell::tokenize(const String &line, String *err) const
             break;
         case '&':
             if (escapes % 2 == 0) {
-                addPrev(tokens, last, str);
+                addPrev(tokens, last, str, flags);
                 if (str[1] == '&') {
                     tokens.append({Token::Operator, String(str, 2)});
                     ++str;
@@ -317,7 +326,7 @@ List<Shell::Token> Shell::tokenize(const String &line, String *err) const
         case ')':
         case '!':
             if (escapes % 2 == 0) {
-                addPrev(tokens, last, str);
+                addPrev(tokens, last, str, flags);
                 tokens.append({Token::Operator, String(str, 1)});
             }
             break;
@@ -329,22 +338,16 @@ List<Shell::Token> Shell::tokenize(const String &line, String *err) const
     }
     if (last && last + 1 < str) {
         tokens.append({Token::Command, String(last, str - last)});
-        eatEscapes(tokens.last().string);
+        if (flags & Tokenize_CollapseWhitespace)
+            eatEscapes(tokens.last().string);
     }
     return tokens;
 }
 
 void Shell::process(const List<Token> &tokens)
 {
-    const char *names[] = {
-        "Javascript",
-        "Command",
-        "Pipe",
-        "Operator"
-    };
-
     for (auto token : tokens) {
-        error() << String::format<128>("[%s] %s", token.string.constData(), names[token.type]);
+        error() << String::format<128>("[%s] %s", token.string.constData(), Token::typeName(token.type));
     }
 }
 
@@ -360,7 +363,7 @@ static inline bool environmentVarChar(unsigned char ch)
     return (isalpha(ch) || ch == '_' ? Valid : Invalid);
 }
 
-bool Shell::expandEnvironment(String &string, String *err) const
+bool Shell::expandEnvironment(String &string, String &err) const
 {
     int escapes = 0;
     for (int i=0; i<string.size() - 1; ++i) {
@@ -375,8 +378,7 @@ bool Shell::expandEnvironment(String &string, String *err) const
                             string.replace(i, j - i + 1, sub);
                             // error() << "Got sub" << string.mid(i + 2, j - 2);
                         } else if (environmentVarChar(string.at(j)) == Invalid) {
-                            if (err)
-                                *err = "Bad substitution";
+                            err = "Bad substitution";
                             return false;
                         }
                     }
@@ -390,8 +392,7 @@ bool Shell::expandEnvironment(String &string, String *err) const
                     const String sub = mEnviron.value(string.mid(i + 1, j - 1));
                     string.replace(i, j - i + 1, sub);
                 } else {
-                    if (err)
-                        *err = "Bad substitution";
+                    err = "Bad substitution";
                     return false;
                 }
                 // if (
@@ -409,7 +410,52 @@ bool Shell::expandEnvironment(String &string, String *err) const
     }
 }
 
-Shell::CompletionResult Shell::complete(const String &line, int cursor, String *insert)
+// cursor is the unicode character position, line is in utf8
+Shell::CompletionResult Shell::complete(const String &line, int cursor, String &insert)
 {
-    // Value value =
+    String err;
+    const List<Token> tokens = tokenize(line, Tokenize_None, err);
+    if (!err.isEmpty()) {
+        return Completion_Error;
+    } else if (tokens.isEmpty()) {
+        return Completion_Refresh;
+    }
+
+    List<Value> args;
+    args.append(line);
+    args.append(cursor);
+    List<Value> toks;
+    for (auto token : tokens) {
+        Map<String, Value> val;
+        val["type"] = Token::typeName(token.type);
+        val["string"] = token.string;
+        toks.append(val);
+    }
+    args.append(toks);
+    bool ok;
+    const Value value = mInterpreter->call("complete", args, &ok);
+    if (!ok)
+        return Completion_Error;
+    const String result = value.value<String>("result");
+    insert = value.value<String>("insert");
+    if (result == "refresh") {
+        return Completion_Refresh;
+    } else if (result == "redisplay") {
+        return Completion_Redisplay;
+    } else {
+        insert.clear();
+        return Completion_Error;
+    }
+}
+
+static const char *typeNames[] = {
+    "Javascript",
+    "Command",
+    "Pipe",
+    "Operator"
+};
+
+const char * Shell::Token::typeName(Type type)
+{
+    return typeNames[type];
 }

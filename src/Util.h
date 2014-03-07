@@ -13,6 +13,7 @@ String wcharToUtf8(const wchar_t* string, ssize_t size = -1);
 String wcharToUtf8(const std::wstring& string);
 std::wstring utf8ToWChar(const char* data, ssize_t size = -1);
 std::wstring utf8ToWChar(const String& data);
+int utf8CharacterCount(const String &data);
 }
 
 #endif
