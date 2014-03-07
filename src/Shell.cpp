@@ -257,10 +257,25 @@ static inline void eatEscapes(String &string)
     }
 }
 
+static inline String stripBraces(String&& string)
+{
+    String str = std::move(string);
+    if (str.isEmpty())
+        return str;
+    switch (str.first()) {
+    case '\'':
+    case '"':
+    case '{':
+        assert(str.size() >= 2);
+        return str.mid(1, str.size() - 2);
+    }
+    return str;
+}
+
 static void addPrev(List<Shell::Token> &tokens, const char *&last, const char *str, unsigned int flags)
 {
     if (last && last < str) {
-        tokens.append({Shell::Token::Command, String(last, str - last + 1)});
+        tokens.append({Shell::Token::Command, stripBraces(String(last, str - last + 1))});
         if (flags & Shell::Tokenize_CollapseWhitespace) {
             eatEscapes(tokens.last().string);
             tokens.last().string.chomp(' ');
@@ -272,7 +287,7 @@ static void addPrev(List<Shell::Token> &tokens, const char *&last, const char *s
 static void addArg(List<Shell::Token> &tokens, const char *&last, const char *str, unsigned int flags)
 {
     if (last && last < str) {
-        tokens.last().args.append(String(last, str - last + 1));
+        tokens.last().args.append(stripBraces(String(last, str - last + 1)));
         if (flags & Shell::Tokenize_CollapseWhitespace) {
             eatEscapes(tokens.last().args.last());
             tokens.last().args.last().chomp(' ');
@@ -392,9 +407,15 @@ List<Shell::Token> Shell::tokenize(String line, unsigned int flags, String &err)
         ++str;
     }
     if (last && last + 1 < str) {
-        tokens.append({Token::Command, String(last, str - last)});
-        if (flags & Tokenize_CollapseWhitespace)
-            eatEscapes(tokens.last().string);
+        if (!tokens.isEmpty() && tokens.last().type == Token::Command) {
+            tokens.last().args.append(stripBraces(String(last, str - last)));
+            if (flags & Tokenize_CollapseWhitespace)
+                eatEscapes(tokens.last().args.last());
+        } else {
+            tokens.append({Token::Command, stripBraces(String(last, str - last))});
+            if (flags & Tokenize_CollapseWhitespace)
+                eatEscapes(tokens.last().string);
+        }
     }
     return tokens;
 }
