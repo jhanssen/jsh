@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
+#include <assert.h>
 #include <atomic>
 
 extern char **environ;
@@ -233,6 +234,18 @@ static void addPrev(List<Shell::Token> &tokens, const char *&last, const char *s
             eatEscapes(tokens.last().string);
             tokens.last().string.chomp(' ');
         }
+    }
+    last = 0;
+}
+
+static void addArg(List<Shell::Token> &tokens, const char *&last, const char *str, unsigned int flags)
+{
+    if (last && last < str) {
+        tokens.last().args.append(String(last, str - last + 1));
+        if (flags & Shell::Tokenize_CollapseWhitespace) {
+            eatEscapes(tokens.last().args.last());
+            tokens.last().args.last().chomp(' ');
+        }
         last = 0;
     }
 }
@@ -273,6 +286,8 @@ List<Shell::Token> Shell::tokenize(String line, unsigned int flags, String &err)
             ++str;
             continue;
         }
+        // if (last && str)
+        //     printf("last %c %p, str %c %p\n", *last, last, *str, str);
 
         switch (*str) {
         case '{': {
@@ -330,6 +345,15 @@ List<Shell::Token> Shell::tokenize(String line, unsigned int flags, String &err)
                 tokens.append({Token::Operator, String(str, 1)});
             }
             break;
+        case ' ':
+            if (escapes % 2 == 0) {
+                if (!tokens.isEmpty() && tokens.last().type == Token::Command) {
+                    addArg(tokens, last, str, flags);
+                } else {
+                    addPrev(tokens, last, str, flags);
+                }
+            }
+            break;
         default:
             break;
         }
@@ -344,10 +368,25 @@ List<Shell::Token> Shell::tokenize(String line, unsigned int flags, String &err)
     return tokens;
 }
 
+void Shell::runCommand(const String& command)
+{
+}
+
 void Shell::process(const List<Token> &tokens)
 {
-    for (auto token : tokens) {
-        error() << String::format<128>("[%s] %s", token.string.constData(), Token::typeName(token.type));
+    for (const auto& token : tokens) {
+        String args;
+        for (const String& arg : token.args) {
+            args += arg + "-";
+        }
+        if (!args.isEmpty())
+            args.chop(1);
+        error() << String::format<128>("[%s] %s (%s)", token.string.constData(), Token::typeName(token.type), args.constData());
+        switch (token.type) {
+        case Token::Command:
+            //runCommand(token.string);
+            break;
+        }
     }
 }
 

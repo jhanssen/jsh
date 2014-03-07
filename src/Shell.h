@@ -25,6 +25,7 @@ public:
         static const char *typeName(Type type);
 
         String string;
+        List<String> args;
     };
 
     enum TokenizeFlag {
@@ -40,9 +41,11 @@ public:
         Completion_Error
     };
     CompletionResult complete(const String &line, int cursor, String &insert);
+
 private:
     bool expandEnvironment(String &string, String &err) const;
     void process(const List<Token> &tokens);
+    void runCommand(const String& command);
     Hash<String, String> mEnviron;
     String mBuffer;
     int mArgc;
