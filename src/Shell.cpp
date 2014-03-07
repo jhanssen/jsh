@@ -127,7 +127,9 @@ int Shell::exec()
         if (el_wparse(el, ac, av) == -1) {
             // do stuff?
             for (int i = 0; i < ac; ++i) {
-                fwprintf(stderr, L"arg %d '%ls', ", i, av[i]);
+                fwprintf(stderr, L"arg %d '%ls'", i, av[i]);
+                fprintf(stderr, " utf8 '%s'", util::wcharToUtf8(av[i]).constData());
+                fwprintf(stderr, L" utf8->wchar '%ls', ", util::utf8ToWChar(util::wcharToUtf8(av[i])).c_str());
             }
             fprintf(stderr, "\n");
         }

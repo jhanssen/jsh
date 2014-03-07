@@ -32,6 +32,6 @@ link_directories(
   )
 
 add_executable(jsh ${CLIENT_SOURCES})
-target_link_libraries(jsh pthread rct edit termcap ${V8_BASE_LIB} ${V8_NOSNAPSHOT_LIB} icui18n icuuc icudata)
+target_link_libraries(jsh pthread rct edit termcap ${V8_BASE_LIB} ${V8_NOSNAPSHOT_LIB} iconv icui18n icuuc icudata)
 
 #add_dependencies(jsh v8)
