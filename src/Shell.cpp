@@ -1,8 +1,10 @@
 #include "Shell.h"
 #include "Interpreter.h"
+#include "ChainProcess.h"
 #include "Util.h"
 #include <rct/EventLoop.h>
 #include <rct/Path.h>
+#include <rct/Process.h>
 #include <histedit.h>
 #include <locale.h>
 #include <stdio.h>
@@ -76,9 +78,9 @@ static void sig(int i)
 
 int Shell::exec()
 {
-    EventLoop::SharedPtr loop;
     std::thread thr;
     {
+        EventLoop::SharedPtr loop;
         std::mutex mutex;
         std::condition_variable cond;
         bool done = false;
@@ -97,6 +99,7 @@ int Shell::exec()
             cond.wait(locker);
         }
         assert(loop);
+        mEventLoop = loop;
     }
 
     setlocale(LC_ALL, "");
@@ -199,7 +202,7 @@ int Shell::exec()
 
     mInterpreter = 0;
 
-    loop->quit();
+    mEventLoop->quit();
     thr.join();
 
     return 0;
@@ -292,8 +295,8 @@ static void addArg(List<Shell::Token> &tokens, const char *&last, const char *st
             eatEscapes(tokens.last().args.last());
             tokens.last().args.last().chomp(' ');
         }
-        last = 0;
     }
+    last = 0;
 }
 
 List<Shell::Token> Shell::tokenize(String line, unsigned int flags, String &err) const
@@ -420,8 +423,20 @@ List<Shell::Token> Shell::tokenize(String line, unsigned int flags, String &err)
     return tokens;
 }
 
-void Shell::runCommand(const String& command)
+void Shell::runCommand(const String& command, const List<String>& arguments)
 {
+    mEventLoop->callLaterMove([](const String& cmd, const List<String>& args) {
+            Process* proc = new Process;
+            ChainProcess* chain = new ChainProcess(proc);
+            chain->finishedStdOut().connect<EventLoop::Move>(std::bind([](String&& str) {
+                        fprintf(stdout, "%s", str.constData());
+                    }, std::placeholders::_1));
+            chain->finishedStdErr().connect<EventLoop::Move>(std::bind([](String&& str) {
+                        fprintf(stderr, "%s", str.constData());
+                    }, std::placeholders::_1));
+            chain->exec();
+            proc->start(cmd, args);
+        }, std::move(command), std::move(arguments));
 }
 
 void Shell::process(const List<Token> &tokens)
@@ -436,7 +451,7 @@ void Shell::process(const List<Token> &tokens)
         error() << String::format<128>("[%s] %s (%s)", token.string.constData(), Token::typeName(token.type), args.constData());
         switch (token.type) {
         case Token::Command:
-            //runCommand(token.string);
+            runCommand(token.string, token.args);
             break;
         }
     }

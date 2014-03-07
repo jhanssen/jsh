@@ -3,6 +3,7 @@
 
 #include <rct/String.h>
 #include <rct/Hash.h>
+#include <rct/EventLoop.h>
 
 class Interpreter;
 class Shell
@@ -45,12 +46,13 @@ public:
 private:
     bool expandEnvironment(String &string, String &err) const;
     void process(const List<Token> &tokens);
-    void runCommand(const String& command);
+    void runCommand(const String& command, const List<String>& arguments);
     Hash<String, String> mEnviron;
     String mBuffer;
     int mArgc;
     char** mArgv;
     Interpreter *mInterpreter;
+    EventLoop::SharedPtr mEventLoop;
 };
 
 #endif
