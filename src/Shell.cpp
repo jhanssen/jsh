@@ -22,10 +22,10 @@ int Shell::exec()
     mInterpreter = &interpreter;
     interpreter.load(rcFile);
 
-    mInterpreter = 0;
-
     mEventLoop->exec();
     mInput->join();
+
+    mInterpreter = 0;
 
     return 0;
 }

@@ -166,12 +166,12 @@ int Input::getChar(EditLine *el, wchar_t *ch)
                     if (r > 0) {
                         return 1;
                     }
+                    mbtowc(0, 0, 0);
                     if (outpos == 4) {
                         // bad
                         fprintf(stderr, "Invalid utf8 sequence\n");
                         return -1;
                     }
-                    mbtowc(0, 0, 0);
                 }
             } else {
                 // Go for ascii
