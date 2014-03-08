@@ -47,7 +47,7 @@ Path findFile(const String& path, const String filename)
 {
     const List<String> candidates = path.split(':');
     for (const String& cand : candidates) {
-        Path pcand = homeify(path + "/" + filename);
+        Path pcand = homeify(cand + "/" + filename);
         if (pcand.exists())
             return pcand;
     }

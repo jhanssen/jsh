@@ -6,6 +6,7 @@
 #include <rct/EventLoop.h>
 
 class Interpreter;
+class Input;
 class Shell
 {
 public:
@@ -15,7 +16,9 @@ public:
     }
 
     int exec();
+    Interpreter* interpreter() const { return mInterpreter; }
 
+private:
     struct Token {
         enum Type {
             Javascript,
@@ -29,30 +32,14 @@ public:
         List<String> args;
     };
 
-    enum TokenizeFlag {
-        Tokenize_None = 0x0,
-        Tokenize_CollapseWhitespace = 0x1,
-        Tokenize_ExpandEnvironmentVariables = 0x2
-    };
-    List<Token> tokenize(String line, unsigned int flags, String &error) const;
-    String env(const String &var) const { return mEnviron.value(var); }
-    enum CompletionResult {
-        Completion_Refresh,
-        Completion_Redisplay,
-        Completion_Error
-    };
-    CompletionResult complete(const String &line, int cursor, String &insert);
-
-private:
-    bool expandEnvironment(String &string, String &err) const;
-    void process(const List<Token> &tokens);
-    void runCommand(const String& command, const List<String>& arguments);
-    Hash<String, String> mEnviron;
-    String mBuffer;
     int mArgc;
     char** mArgv;
     Interpreter *mInterpreter;
+    Input* mInput;
     EventLoop::SharedPtr mEventLoop;
+
+private:
+    friend class Input;
 };
 
 #endif
