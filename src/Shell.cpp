@@ -5,22 +5,6 @@
 #include "Util.h"
 #include <rct/EventLoop.h>
 
-class InputLogOutput : public LogOutput
-{
-public:
-    InputLogOutput(Input* in)
-        : LogOutput(0), input(in)
-    {}
-
-    virtual void log(const char *msg, int)
-    {
-        input->write(util::utf8ToWChar(msg));
-    }
-
-private:
-    Input* input;
-};
-
 int Shell::exec()
 {
     mEventLoop = std::make_shared<EventLoop>();
@@ -28,8 +12,6 @@ int Shell::exec()
 
     mInput = new Input(this, mArgc, mArgv);
     mInput->start();
-
-    new InputLogOutput(mInput);
 
     const Path home = util::homeDirectory();
     const Path elFile = home + "/.jshel";

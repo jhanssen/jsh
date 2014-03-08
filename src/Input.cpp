@@ -21,6 +21,7 @@
 #include <fcntl.h>
 #include <atomic>
 #include <mutex>
+#include <thread>
 #include <condition_variable>
 
 extern char **environ;
@@ -40,6 +41,26 @@ static wchar_t* prompt(EditLine* el)
 
     return continuation ? b : a;
 }
+
+class InputLogOutput : public LogOutput
+{
+public:
+    InputLogOutput(Input* in)
+        : LogOutput(0), input(in), inputThreadId(std::this_thread::get_id())
+    {}
+
+    virtual void log(const char *msg, int)
+    {
+        if (inputThreadId == std::this_thread::get_id())
+            fprintf(stdout, "%s\n", msg);
+        else
+            input->write(util::utf8ToWChar(msg));
+    }
+
+private:
+    Input* input;
+    std::thread::id inputThreadId;
+};
 
 unsigned char Input::elComplete(EditLine *el, int)
 {
@@ -111,8 +132,8 @@ int Input::getChar(EditLine *el, wchar_t *ch)
             for (;;) {
                 r = ::read(readPipe, buf, sizeof(buf) - sizeof(wchar_t));
                 if (r > 0) {
-                    memset(buf + (r * sizeof(wchar_t)), '\0', sizeof(wchar_t));
-                    fwprintf(stdout, L"%ls", buf);
+                    *(buf + (r / sizeof(wchar_t))) = L'\0';
+                    fwprintf(stdout, L"%ls\n", buf);
                 } else {
                     if (!r || (r == -1 && errno != EINTR && errno != EAGAIN)) {
                         ::close(readPipe);
@@ -121,7 +142,11 @@ int Input::getChar(EditLine *el, wchar_t *ch)
                         return -1;
                     }
                     if (errno == EAGAIN) {
-                        //el_set(el, EL_REFRESH);
+                        fflush(stdout);
+                        if (!FD_ISSET(STDIN_FILENO, &rset)) {
+                            //printf("refreshing\n");
+                            el_wset(el, EL_REFRESH);
+                        }
                         break;
                     }
                 }
@@ -138,8 +163,9 @@ int Input::getChar(EditLine *el, wchar_t *ch)
                         return -1;
                     }
                     r = mbtowc(ch, out, outpos);
-                    if (r > 0)
+                    if (r > 0) {
                         return 1;
+                    }
                     if (outpos == 4) {
                         // bad
                         fprintf(stderr, "Invalid utf8 sequence\n");
@@ -170,6 +196,8 @@ void Input::run()
     setlocale(LC_ALL, "");
     if (!strcmp(nl_langinfo(CODESET), "UTF-8"))
         mIsUtf8 = true;
+
+    new InputLogOutput(this);
 
     int flags, ret;
     ret = ::pipe(mPipe);
