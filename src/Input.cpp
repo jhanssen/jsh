@@ -203,7 +203,7 @@ void Input::run()
     ret = ::pipe(mPipe);
     if (ret != -1) {
         do {
-            int flags = fcntl(mPipe[0], F_GETFL, 0);
+            flags = fcntl(mPipe[0], F_GETFL, 0);
         } while (flags == -1 && errno == EINTR);
         if (flags != -1) {
             do {
