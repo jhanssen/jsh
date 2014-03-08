@@ -321,8 +321,9 @@ Value Interpreter::eval(const String& data, const String& name)
 Value Interpreter::call(const String &object, const String &function, const List<Value> &args, bool *ok)
 {
     v8::Isolate* isolate = v8::Isolate::GetCurrent();
-    v8::EscapableHandleScope handle_scope(isolate);
+    v8::HandleScope handle_scope(isolate);
     v8::Local<v8::Context> ctx = v8::Local<v8::Context>::New(isolate, mData->context);
+    v8::Context::Scope contextScope(ctx);
     v8::Handle<v8::Object> global = ctx->Global();
     v8::Handle<v8::Object> obj = global;
 
@@ -348,5 +349,5 @@ Value Interpreter::call(const String &object, const String &function, const List
         arguments[i] = mData->valueToV8Value(args.at(i));
     }
 
-    return mData->v8ValueToValue(handle_scope.Escape(func->Call(obj, arguments.size(), arguments.data())));
+    return mData->v8ValueToValue(func->Call(obj, arguments.size(), arguments.data()));
 }
