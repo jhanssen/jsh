@@ -477,21 +477,9 @@ bool Input::expandEnvironment(String &string, String &err) const
 static Value jsCall(Shell* shell, const String &object, const String &function,
                     const List<Value> &args, bool *ok = 0)
 {
-    std::mutex mtx;
-    std::condition_variable cond;
-    bool done = false;
-    Value ret;
-    EventLoop::mainEventLoop()->callLater([&]() {
-            ret = shell->interpreter()->call(object, function, args, ok);
-            std::unique_lock<std::mutex> lock(mtx);
-            done = true;
-            cond.notify_one();
+    return shell->runAndWait<Value>([&]() -> Value {
+            return shell->interpreter()->call(object, function, args, ok);
         });
-    std::unique_lock<std::mutex> lock(mtx);
-    while (!done) {
-        cond.wait(lock);
-    }
-    return ret;
 }
 
 static Value jsCall(Shell* shell, const String &function, const List<Value> &args, bool *ok = 0)

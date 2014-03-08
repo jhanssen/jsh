@@ -4,6 +4,9 @@
 #include <rct/String.h>
 #include <rct/Hash.h>
 #include <rct/EventLoop.h>
+#include <functional>
+#include <mutex>
+#include <condition_variable>
 
 class Interpreter;
 class Input;
@@ -17,6 +20,9 @@ public:
 
     int exec();
     Interpreter* interpreter() const { return mInterpreter; }
+
+    template<typename T>
+    T runAndWait(std::function<T()>&& func);
 
 private:
     struct Token {
@@ -41,5 +47,25 @@ private:
 private:
     friend class Input;
 };
+
+template<typename T>
+inline T Shell::runAndWait(std::function<T()>&& func)
+{
+    std::mutex mtx;
+    std::condition_variable cond;
+    bool done = false;
+    T ret;
+    EventLoop::mainEventLoop()->callLater([&]() {
+            ret = func();
+            std::unique_lock<std::mutex> lock(mtx);
+            done = true;
+            cond.notify_one();
+        });
+    std::unique_lock<std::mutex> lock(mtx);
+    while (!done) {
+        cond.wait(lock);
+    }
+    return ret;
+}
 
 #endif
