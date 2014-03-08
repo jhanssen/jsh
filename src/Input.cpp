@@ -52,7 +52,7 @@ public:
     virtual void log(const char *msg, int)
     {
         if (inputThreadId == std::this_thread::get_id())
-            fprintf(stdout, "%s\n", msg);
+            fwprintf(stdout, L"%ls\n", util::utf8ToWChar(msg).c_str());
         else
             input->write(util::utf8ToWChar(msg));
     }
