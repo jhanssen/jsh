@@ -11,10 +11,14 @@
 #include <rct/Value.h>
 #include <histedit.h>
 #include <locale.h>
+#include <langinfo.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
 #include <assert.h>
+#include <sys/select.h>
+#include <sys/types.h>
+#include <fcntl.h>
 #include <atomic>
 #include <mutex>
 #include <condition_variable>
@@ -41,7 +45,7 @@ unsigned char Input::elComplete(EditLine *el, int)
 {
     Input *input = 0;
     el_wget(el, EL_CLIENTDATA, &input);
-    assert(shell);
+    assert(input);
     String insert;
     const LineInfoW *lineInfo = el_wline(el);
     const String line = util::wcharToUtf8(lineInfo->buffer);
@@ -61,13 +65,124 @@ unsigned char Input::elComplete(EditLine *el, int)
     }
 }
 
+void Input::write(const std::wstring& data)
+{
+    const int r = ::write(mPipe[1], data.c_str(), data.size() * sizeof(wchar_t));
+    if (r == -1)
+        fprintf(stderr, "Unable to write to input pipe: %d\n", errno);
+}
+
+void Input::write(const wchar_t* data, ssize_t len)
+{
+    if (len == -1)
+        len = static_cast<ssize_t>(wcslen(data));
+    const int r = ::write(mPipe[1], data, len * sizeof(wchar_t));
+    if (r == -1)
+        fprintf(stderr, "Unable to write to input pipe: %d\n", errno);
+}
+
 int Input::getChar(EditLine *el, wchar_t *ch)
 {
+    Input *input = 0;
+    el_wget(el, EL_CLIENTDATA, &input);
+    assert(input);
+
+    int& readPipe = input->mPipe[0];
+
+    if (readPipe == -1)
+        return -1;
+
+    fd_set rset;
+    char out[4];
+    int outpos;
+    wchar_t buf[8192];
+    int r;
+    const int max = std::max(readPipe, STDIN_FILENO) + 1;
+    for (;;) {
+        FD_ZERO(&rset);
+        FD_SET(readPipe, &rset);
+        FD_SET(STDIN_FILENO, &rset);
+        r = ::select(max, &rset, 0, 0, 0);
+        if (r <= 0) {
+            fprintf(stderr, "Select returned <= 0\n");
+            return -1;
+        }
+        if (FD_ISSET(readPipe, &rset)) {
+            for (;;) {
+                r = ::read(readPipe, buf, sizeof(buf) - sizeof(wchar_t));
+                if (r > 0) {
+                    memset(buf + (r * sizeof(wchar_t)), '\0', sizeof(wchar_t));
+                    fwprintf(stdout, L"%ls", buf);
+                } else {
+                    if (!r || (r == -1 && errno != EINTR && errno != EAGAIN)) {
+                        ::close(readPipe);
+                        readPipe = -1;
+                        fprintf(stderr, "Read from pipe returned %d (%d)\n", r, errno);
+                        return -1;
+                    }
+                    if (errno == EAGAIN) {
+                        //el_set(el, EL_REFRESH);
+                        break;
+                    }
+                }
+            }
+        }
+        if (FD_ISSET(STDIN_FILENO, &rset)) {
+            int r;
+            if (input->isUtf8()) {
+                outpos = 0;
+                for (;;) {
+                    r = ::read(STDIN_FILENO, out + outpos++, 1);
+                    if (r <= 0) {
+                        fprintf(stderr, "Failed to read (utf8)\n");
+                        return -1;
+                    }
+                    r = mbtowc(ch, out, outpos);
+                    if (r > 0)
+                        return 1;
+                    if (outpos == 4) {
+                        // bad
+                        fprintf(stderr, "Invalid utf8 sequence\n");
+                        return -1;
+                    }
+                    mbtowc(0, 0, 0);
+                }
+            } else {
+                // Go for ascii
+                r = ::read(STDIN_FILENO, out, 1);
+                if (r <= 0) {
+                    fprintf(stderr, "Failed to read (ascii)\n");
+                    return -1;
+                }
+                *ch = out[0];
+                return 1;
+            }
+            fprintf(stderr, "balle\n");
+            return -1;
+        }
+    }
+    fprintf(stderr, "Out of getChar\n");
+    return -1;
 }
 
 void Input::run()
 {
     setlocale(LC_ALL, "");
+    if (!strcmp(nl_langinfo(CODESET), "UTF-8"))
+        mIsUtf8 = true;
+
+    int flags, ret;
+    ret = ::pipe(mPipe);
+    if (ret != -1) {
+        do {
+            int flags = fcntl(mPipe[0], F_GETFL, 0);
+        } while (flags == -1 && errno == EINTR);
+        if (flags != -1) {
+            do {
+                ret = fcntl(mPipe[0], F_SETFL, flags | O_NONBLOCK);
+            } while (ret == -1 && errno == EINTR);
+        }
+    }
 
     for (int i=0; environ[i]; ++i) {
         char *eq = strchr(environ[i], '=');
@@ -101,7 +216,7 @@ void Input::run()
 
     el_wset(el, EL_EDITOR, L"emacs");
     el_wset(el, EL_SIGNAL, 1);
-    //el_wset(el, EL_GETCFN, &Input::getChar);
+    el_wset(el, EL_GETCFN, &Input::getChar);
     el_wset(el, EL_PROMPT_ESC, prompt, '\1');
     if (const char *home = getenv("HOME")) {
         Path rc = home;
@@ -161,6 +276,10 @@ void Input::run()
     history_wend(hist);
 
     fprintf(stdout, "\n");
+
+    if (mPipe[0] != -1)
+        ::close(mPipe[0]);
+    ::close(mPipe[1]);
 
     EventLoop::mainEventLoop()->quit();
 }

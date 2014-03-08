@@ -24,25 +24,26 @@ static void Print(const v8::FunctionCallbackInfo<v8::Value>& args)
     bool first = true;
     v8::Isolate* isolate = args.GetIsolate();
     InterpreterData* interpreter = static_cast<InterpreterData*>(isolate->GetData(0));
+    String out;
     for (int i = 0; i < args.Length(); i++) {
         v8::HandleScope handle_scope(isolate);
         if (first) {
             first = false;
         } else {
-            printf(" ");
+            out += " ";
         }
         if (args[i]->IsObject()) {
             v8::String::Utf8Value str(interpreter->toJSON(args[i], true));
             const char* cstr = ToCString(str);
-            printf("%s", cstr);
+            out += cstr;
         } else {
             v8::String::Utf8Value str(args[i]);
             const char* cstr = ToCString(str);
-            printf("%s", cstr);
+            out += cstr;
         }
     }
-    printf("\n");
-    fflush(stdout);
+    if (!out.isEmpty())
+        error() << out;
 }
 
 v8::Handle<v8::Value> InterpreterData::loadJSModule(v8::Isolate* isolate, const char* name)
@@ -154,7 +155,7 @@ Interpreter::Interpreter()
     v8::HandleScope handle_scope(isolate);
     v8::Handle<v8::Context> context = createContext(isolate);
     if (context.IsEmpty()) {
-        fprintf(stderr, "Error creating context\n");
+        error() << "Error creating context";
         return;
     }
     mData->context.Reset(isolate, context);
