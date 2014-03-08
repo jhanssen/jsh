@@ -17,8 +17,9 @@ public:
     {
     }
 
-    void write(const std::wstring& data);
-    void write(const wchar_t* data, ssize_t len = -1);
+    // Assumes multi-byte encoding
+    void write(const String& data);
+    void write(const char* data, ssize_t len = -1);
 
 private:
     enum TokenizeFlag {

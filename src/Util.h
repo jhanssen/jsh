@@ -14,6 +14,8 @@ String wcharToUtf8(const std::wstring& string);
 std::wstring utf8ToWChar(const char* data, ssize_t size = -1);
 std::wstring utf8ToWChar(const String& data);
 int utf8CharacterCount(const String &data);
+String utf8ToMB(const String& data);
+String utf8ToMB(const char* data, ssize_t size = -1);
 }
 
 #endif

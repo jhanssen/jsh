@@ -11,7 +11,7 @@ int main(int argc, char** argv)
     int logLevel = 0;
 
     if (!initLogging(argv[0], 0, logLevel, logFile, logFlags)) {
-        fwprintf(stderr, L"Can't initialize logging with %s %d %d %s 0x%0x\n",
+        fprintf(stderr, "Can't initialize logging with %s %d %d %s 0x%0x\n",
                 argv[0], LogStderr, logLevel, logFile ? logFile : "", logFlags);
         return 1;
     }

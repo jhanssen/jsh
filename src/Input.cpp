@@ -52,9 +52,9 @@ public:
     virtual void log(const char *msg, int)
     {
         if (inputThreadId == std::this_thread::get_id()) {
-            fwprintf(stdout, L"%ls\n", util::utf8ToWChar(msg).c_str());
+            fprintf(stdout, "%s\n", util::utf8ToMB(msg).constData());
         } else {
-            input->write(util::utf8ToWChar(msg));
+            input->write(util::utf8ToMB(msg));
         }
     }
 
@@ -87,20 +87,20 @@ unsigned char Input::elComplete(EditLine *el, int)
     }
 }
 
-void Input::write(const std::wstring& data)
+void Input::write(const String& data)
 {
-    const int r = ::write(mPipe[1], data.c_str(), data.size() * sizeof(wchar_t));
+    const int r = ::write(mPipe[1], data.constData(), data.size());
     if (r == -1)
-        fwprintf(stderr, L"Unable to write to input pipe: %d\n", errno);
+        fprintf(stderr, "Unable to write to input pipe: %d\n", errno);
 }
 
-void Input::write(const wchar_t* data, ssize_t len)
+void Input::write(const char* data, ssize_t len)
 {
     if (len == -1)
-        len = static_cast<ssize_t>(wcslen(data));
-    const int r = ::write(mPipe[1], data, len * sizeof(wchar_t));
+        len = static_cast<ssize_t>(strlen(data));
+    const int r = ::write(mPipe[1], data, len);
     if (r == -1)
-        fwprintf(stderr, L"Unable to write to input pipe: %d\n", errno);
+        fprintf(stderr, "Unable to write to input pipe: %d\n", errno);
 }
 
 int Input::getChar(EditLine *el, wchar_t *ch)
@@ -117,7 +117,7 @@ int Input::getChar(EditLine *el, wchar_t *ch)
     fd_set rset;
     char out[4];
     int outpos;
-    wchar_t buf[8192];
+    char buf[8192];
     int r;
     const int max = std::max(readPipe, STDIN_FILENO) + 1;
     for (;;) {
@@ -126,26 +126,26 @@ int Input::getChar(EditLine *el, wchar_t *ch)
         FD_SET(STDIN_FILENO, &rset);
         r = ::select(max, &rset, 0, 0, 0);
         if (r <= 0) {
-            fwprintf(stderr, L"Select returned <= 0\n");
+            fprintf(stderr, "Select returned <= 0\n");
             return -1;
         }
         if (FD_ISSET(readPipe, &rset)) {
             for (;;) {
-                r = ::read(readPipe, buf, sizeof(buf) - sizeof(wchar_t));
+                r = ::read(readPipe, buf, sizeof(buf) - 1);
                 if (r > 0) {
-                    *(buf + (r / sizeof(wchar_t))) = L'\0';
-                    fwprintf(stdout, L"%ls\n", buf);
+                    *(buf + r) = '\0';
+                    fprintf(stdout, "%s\n", buf);
                 } else {
                     if (!r || (r == -1 && errno != EINTR && errno != EAGAIN)) {
                         ::close(readPipe);
                         readPipe = -1;
-                        fwprintf(stderr, L"Read from pipe returned %d (%d)\n", r, errno);
+                        fprintf(stderr, "Read from pipe returned %d (%d)\n", r, errno);
                         return -1;
                     }
                     if (errno == EAGAIN) {
                         fflush(stdout);
                         if (!FD_ISSET(STDIN_FILENO, &rset)) {
-                            //wprintf(L"refreshing\n");
+                            //printf("refreshing\n");
                             el_wset(el, EL_REFRESH);
                         }
                         break;
@@ -160,7 +160,7 @@ int Input::getChar(EditLine *el, wchar_t *ch)
                 for (;;) {
                     r = ::read(STDIN_FILENO, out + outpos++, 1);
                     if (r <= 0) {
-                        fwprintf(stderr, L"Failed to read (utf8)\n");
+                        fprintf(stderr, "Failed to read (utf8)\n");
                         return -1;
                     }
                     r = mbtowc(ch, out, outpos);
@@ -170,7 +170,7 @@ int Input::getChar(EditLine *el, wchar_t *ch)
                     mbtowc(0, 0, 0);
                     if (outpos == 4) {
                         // bad
-                        fwprintf(stderr, L"Invalid utf8 sequence\n");
+                        fprintf(stderr, "Invalid utf8 sequence\n");
                         return -1;
                     }
                 }
@@ -178,17 +178,17 @@ int Input::getChar(EditLine *el, wchar_t *ch)
                 // Go for ascii
                 r = ::read(STDIN_FILENO, out, 1);
                 if (r <= 0) {
-                    fwprintf(stderr, L"Failed to read (ascii)\n");
+                    fprintf(stderr, "Failed to read (ascii)\n");
                     return -1;
                 }
                 *ch = out[0];
                 return 1;
             }
-            fwprintf(stderr, L"Neither readPipe nor STDIN_FILENO hit\n");
+            fprintf(stderr, "Neither readPipe nor STDIN_FILENO hit\n");
             return -1;
         }
     }
-    fwprintf(stderr, L"Out of getChar\n");
+    fprintf(stderr, "Out of getChar\n");
     return -1;
 }
 
@@ -265,7 +265,7 @@ void Input::run()
 
     while ((line = el_wgets(el, &numc)) && numc) {
         if (int s = gotsig.load()) {
-            fwprintf(stderr, L"got signal %d\n", s);
+            fprintf(stderr, "got signal %d\n", s);
             gotsig.store(0);
             el_reset(el);
         }
@@ -304,7 +304,7 @@ void Input::run()
     history_w(hist, &ev, H_SAVE, histFile.constData());
     history_wend(hist);
 
-    fwprintf(stdout, L"\n");
+    fprintf(stdout, "\n");
 
     if (mPipe[0] != -1)
         ::close(mPipe[0]);
@@ -441,7 +441,7 @@ List<Shell::Token> Input::tokenize(String line, unsigned int flags, String &err)
             continue;
         }
         // if (last && str)
-        //     wprintf(L"last %c %p, str %c %p\n", *last, last, *str, str);
+        //     printf("last %c %p, str %c %p\n", *last, last, *str, str);
 
         switch (*str) {
         case '{': {
@@ -534,10 +534,10 @@ void Input::runCommand(const String& command, const List<String>& arguments)
     //         Process* proc = new Process;
     //         ChainProcess* chain = new ChainProcess(proc);
     //         chain->finishedStdOut().connect<EventLoop::Move>(std::bind([](String&& str) {
-    //                     fwprintf(stdout, L"%s", str.constData());
+    //                     fprintf(stdout, "%s", str.constData());
     //                 }, std::placeholders::_1));
     //         chain->finishedStdErr().connect<EventLoop::Move>(std::bind([](String&& str) {
-    //                     fwprintf(stderr, L"%s", str.constData());
+    //                     fprintf(stderr, "%s", str.constData());
     //                 }, std::placeholders::_1));
     //         chain->exec();
     //         proc->start(cmd, args);

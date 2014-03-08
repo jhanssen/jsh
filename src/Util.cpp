@@ -2,6 +2,8 @@
 #include <pwd.h>
 #include <stdlib.h>
 #include <iconv.h>
+#include <langinfo.h>
+#include <cwchar>
 #include <mutex>
 #include <utf8.h>
 
@@ -126,4 +128,37 @@ int utf8CharacterCount(const String &data)
     }
     return ret;
 }
+
+static bool isUtf8 = false;
+static std::once_flag isUtf8Flag;
+
+String utf8ToMB(const String& data)
+{
+    std::call_once(isUtf8Flag, []() { if (!strcmp(nl_langinfo(CODESET), "UTF-8")) isUtf8 = true; });
+    if (isUtf8)
+        return data;
+    return utf8ToMB(data.constData(), data.size());
+}
+
+String utf8ToMB(const char* data, ssize_t size)
+{
+    std::call_once(isUtf8Flag, []() { if (!strcmp(nl_langinfo(CODESET), "UTF-8")) isUtf8 = true; });
+    if (size == -1)
+        size = static_cast<ssize_t>(strlen(data));
+    if (isUtf8)
+        return String(data, size);
+    const std::wstring str = utf8ToWChar(data, size);
+    const wchar_t* in = str.c_str();
+    std::mbstate_t state = std::mbstate_t();
+    // check the required size
+    size_t sz = std::wcsrtombs(0, &in, 0, &state);
+    if (sz == static_cast<size_t>(-1)) {
+        // bad
+        return String();
+    }
+    char buf[sz + 1];
+    sz = std::wcsrtombs(buf, &in, sz + 1, &state);
+    return String(buf, sz);
+}
+
 }
