@@ -48,7 +48,7 @@ void ChainProcess::previousStdout(String&& stdout)
 
 void ChainProcess::previousStderr(String&& stderr)
 {
-    fprintf(::stderr, "%s", stderr.constData());
+    fwprintf(::stderr, L"%s", stderr.constData());
 }
 
 void ChainProcess::previousClosed()
