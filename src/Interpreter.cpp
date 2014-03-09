@@ -19,7 +19,33 @@ public:
     v8::UniquePersistent<v8::Context> context;
 };
 
-static void Print(const v8::FunctionCallbackInfo<v8::Value>& args)
+class InterpreterScopeData
+{
+public:
+    InterpreterScopeData(const Interpreter::SharedPtr& inter, Interpreter::InterpreterScope* sco, const String& scr, const String& nam)
+        : interpreter(inter), scope(sco), script(scr), name(nam)
+    {
+    }
+    ~InterpreterScopeData();
+
+    void exec(const String& script, const String& data);
+
+    Interpreter::SharedPtr interpreter;
+    Interpreter::InterpreterScope* scope;
+
+    struct Listener
+    {
+        v8::UniquePersistent<v8::Value> recv;
+        v8::UniquePersistent<v8::Function> func;
+    };
+    List<Listener*> dataListeners, closeListeners;
+    v8::UniquePersistent<v8::Function> stdout, stderr;
+    v8::UniquePersistent<v8::Object> stdin;
+
+    String script, name;
+};
+
+static inline String Print(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
     bool first = true;
     v8::Isolate* isolate = args.GetIsolate();
@@ -42,8 +68,77 @@ static void Print(const v8::FunctionCallbackInfo<v8::Value>& args)
             out += cstr;
         }
     }
-    if (!out.isEmpty())
-        error() << out;
+    return out;
+}
+
+static void PrintStdout(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    const String& out = Print(args);
+    if (!out.isEmpty()) {
+        fprintf(stdout, "%s\n", out.constData());
+    }
+}
+
+static void PrintStderr(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    const String& err = Print(args);
+    if (!err.isEmpty()) {
+        fprintf(stdout, "%s\n", err.constData());
+    }
+}
+
+static void EmitStdout(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    const String& out = Print(args);
+    if (!out.isEmpty()) {
+        v8::Isolate* isolate = args.GetIsolate();
+        InterpreterScopeData* scope = static_cast<InterpreterScopeData*>(isolate->GetData(1));
+        assert(scope);
+        scope->scope->stdout()(out);
+    }
+}
+
+static void EmitStderr(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    const String& err = Print(args);
+    if (!err.isEmpty()) {
+        fprintf(stdout, "%s\n", err.constData());
+        v8::Isolate* isolate = args.GetIsolate();
+        InterpreterScopeData* scope = static_cast<InterpreterScopeData*>(isolate->GetData(1));
+        assert(scope);
+        scope->scope->stderr()(err);
+    }
+}
+
+static void StdinOn(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    if (args.Length() >= 2) {
+        v8::Local<v8::Value> type = args[0];
+        v8::Local<v8::Value> func = args[0];
+        if (type->IsString() && func->IsFunction()) {
+            InterpreterScopeData* scope = static_cast<InterpreterScopeData*>(isolate->GetData(1));
+            assert(scope);
+            InterpreterScopeData::Listener* listener = new InterpreterScopeData::Listener;
+            listener->recv = v8::UniquePersistent<v8::Value>(isolate, args.Callee());
+            listener->func = v8::UniquePersistent<v8::Function>(isolate, v8::Local<v8::Function>::Cast(func));
+            const v8::String::Utf8Value str(type);
+            if (!strcmp(ToCString(str), "data")) {
+                scope->dataListeners.append(listener);
+            } else if (!strcmp(ToCString(str), "close")) {
+                scope->closeListeners.append(listener);
+            } else {
+                isolate->ThrowException(v8::String::NewFromUtf8(isolate, "Unrecognized type to stdin.on"));
+                delete listener;
+                return;
+            }
+            args.GetReturnValue().Set(args.Holder());
+        } else {
+            isolate->ThrowException(v8::String::NewFromUtf8(isolate, "Invalid arguments to stdin.on"));
+        }
+    } else {
+        isolate->ThrowException(v8::String::NewFromUtf8(isolate, "stdin.on needs at least two arguments"));
+    }
 }
 
 v8::Handle<v8::Value> InterpreterData::loadJSModule(v8::Isolate* isolate, const char* name)
@@ -124,7 +219,7 @@ static v8::Handle<v8::Context> createContext(v8::Isolate* isolate)
     v8::Handle<v8::ObjectTemplate> global = v8::ObjectTemplate::New(isolate);
     // Bind the global 'print' function to the C++ Print callback.
     global->Set(v8::String::NewFromUtf8(isolate, "print"),
-                v8::FunctionTemplate::New(isolate, Print));
+                v8::FunctionTemplate::New(isolate, PrintStdout));
     global->Set(v8::String::NewFromUtf8(isolate, "require"),
                 v8::FunctionTemplate::New(isolate, Require));
     // Bind the global 'read' function to the C++ Read callback.
@@ -151,6 +246,7 @@ Interpreter::Interpreter()
 
     v8::Isolate* isolate = v8::Isolate::GetCurrent();
     isolate->SetData(0, mData);
+    isolate->SetData(1, 0);
 
     v8::HandleScope handle_scope(isolate);
     v8::Handle<v8::Context> context = createContext(isolate);
@@ -350,4 +446,112 @@ Value Interpreter::call(const String &object, const String &function, const List
     }
 
     return mData->v8ValueToValue(func->Call(obj, arguments.size(), arguments.data()));
+}
+
+Interpreter::InterpreterScope&& Interpreter::createScope(const String& script, const String& name)
+{
+    return std::move(InterpreterScope(shared_from_this(), script, name));
+}
+
+Interpreter::InterpreterScope::InterpreterScope(const Interpreter::SharedPtr& interpreter, const String& script, const String& name)
+    : mData(new InterpreterScopeData(interpreter, this, script, name))
+{
+}
+
+Interpreter::InterpreterScope::InterpreterScope(InterpreterScope&& other)
+    : mData(other.mData)
+{
+    mData->scope = this;
+    other.mData = 0;
+}
+
+Interpreter::InterpreterScope& Interpreter::InterpreterScope::operator=(InterpreterScope&& other)
+{
+    mData = other.mData;
+    mData->scope = this;
+    other.mData = 0;
+    return *this;
+}
+
+Interpreter::InterpreterScope::~InterpreterScope()
+{
+    delete mData;
+}
+
+void Interpreter::InterpreterScope::exec()
+{
+    mData->exec(mData->script, mData->name);
+}
+
+void Interpreter::InterpreterScope::notify(NotifyType type, const String& data)
+{
+    v8::Isolate* isolate = v8::Isolate::GetCurrent();
+    v8::HandleScope scope(isolate);
+    switch (type) {
+    case StdInClosed:
+        for (auto& func : mData->closeListeners) {
+            v8::Local<v8::Function> f = v8::Local<v8::Function>::New(isolate, func->func);
+            v8::Local<v8::Value> r = v8::Local<v8::Value>::New(isolate, func->recv);
+            f->Call(r, 0, 0);
+        }
+        mClosed();
+        break;
+    case StdInData:
+        v8::Local<v8::Value> s = v8::String::NewFromUtf8(isolate, data.constData());
+        for (auto& func : mData->dataListeners) {
+            v8::Local<v8::Function> f = v8::Local<v8::Function>::New(isolate, func->func);
+            v8::Local<v8::Value> r = v8::Local<v8::Value>::New(isolate, func->recv);
+            f->Call(r, 1, &s);
+        }
+        break;
+    }
+}
+
+InterpreterScopeData::~InterpreterScopeData()
+{
+    v8::Isolate* isolate = v8::Isolate::GetCurrent();
+    if (!isolate->GetData(1))
+        return;
+    assert(isolate->GetData(1) == this);
+    isolate->SetData(1, 0);
+    v8::HandleScope scope(isolate);
+    v8::Local<v8::Context> context = v8::Local<v8::Context>::New(isolate, interpreter->mData->context);
+    v8::Local<v8::Object> global = context->Global();
+    global->Set(v8::String::NewFromUtf8(isolate, "stdout"), v8::Undefined(isolate));
+    global->Set(v8::String::NewFromUtf8(isolate, "stderr"), v8::Undefined(isolate));
+    global->Set(v8::String::NewFromUtf8(isolate, "stdin"), v8::Undefined(isolate));
+
+    for (auto& func : dataListeners) {
+        delete func;
+    }
+    for (auto& func : closeListeners) {
+        delete func;
+    }
+}
+
+void InterpreterScopeData::exec(const String& script, const String& data)
+{
+    // set up the output functions
+    v8::Isolate* isolate = v8::Isolate::GetCurrent();
+    assert(!isolate->GetData(1));
+    isolate->SetData(1, this);
+    v8::HandleScope scope(isolate);
+
+    v8::Local<v8::Context> context = v8::Local<v8::Context>::New(isolate, interpreter->mData->context);
+    v8::Local<v8::Object> global = context->Global();
+
+    v8::Local<v8::Function> stdoutTemplate = v8::Function::New(isolate, EmitStdout);
+    v8::Local<v8::Function> stderrTemplate = v8::Function::New(isolate, EmitStderr);
+    global->Set(v8::String::NewFromUtf8(isolate, "stdout"), stdoutTemplate);
+    global->Set(v8::String::NewFromUtf8(isolate, "stderr"), stderrTemplate);
+    stdout.Reset(isolate, stdoutTemplate);
+    stderr.Reset(isolate, stderrTemplate);
+
+    v8::Local<v8::Object> stdinTemplate = v8::Object::New(isolate);
+    v8::Local<v8::Object> stdinOnTemplate = v8::Function::New(isolate, StdinOn);
+    global->Set(v8::String::NewFromUtf8(isolate, "stdin"), stdinTemplate);
+    stdin.Reset(isolate, stdinTemplate);
+
+    const String func = "(function() {" + script + "})()";
+    interpreter->eval(script, data);
 }

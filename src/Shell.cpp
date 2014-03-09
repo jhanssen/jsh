@@ -14,18 +14,15 @@ int Shell::exec()
     mInput->start();
 
     const Path home = util::homeDirectory();
-    const Path elFile = home + "/.jshel";
     const Path rcFile = home + "/.jshrc.js";
-    const Path histFile = home + "/.jshist";
 
-    Interpreter interpreter;
-    mInterpreter = &interpreter;
-    interpreter.load(rcFile);
+    mInterpreter = std::make_shared<Interpreter>();
+    mInterpreter->load(rcFile);
 
     mEventLoop->exec();
     mInput->join();
 
-    mInterpreter = 0;
+    mInterpreter.reset();
 
     return 0;
 }

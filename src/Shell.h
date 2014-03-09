@@ -20,7 +20,7 @@ public:
     }
 
     int exec();
-    Interpreter* interpreter() const { return mInterpreter; }
+    Interpreter* interpreter() const { return mInterpreter.get(); }
 
     template<typename T>
     T runAndWait(std::function<T()>&& func);
@@ -41,7 +41,7 @@ private:
 
     int mArgc;
     char** mArgv;
-    Interpreter *mInterpreter;
+    std::shared_ptr<Interpreter> mInterpreter;
     std::shared_ptr<Input> mInput;
     EventLoop::SharedPtr mEventLoop;
 
