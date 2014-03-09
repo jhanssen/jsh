@@ -89,7 +89,7 @@ unsigned char Input::elComplete(EditLine *el, int)
 
 void Input::write(const String& data)
 {
-    const int r = ::write(mPipe[1], data.constData(), data.size());
+    const int r = ::write(mStdoutPipe[1], data.constData(), data.size());
     if (r == -1)
         fprintf(stderr, "Unable to write to input pipe: %d\n", errno);
 }
@@ -98,64 +98,105 @@ void Input::write(const char* data, ssize_t len)
 {
     if (len == -1)
         len = static_cast<ssize_t>(strlen(data));
-    const int r = ::write(mPipe[1], data, len);
-    if (r == -1)
+    int w;
+    do {
+        w = ::write(mStdoutPipe[1], data, len);
+    } while (w == -1 && errno == EINTR);
+    if (w == -1)
         fprintf(stderr, "Unable to write to input pipe: %d\n", errno);
 }
 
-int Input::getChar(EditLine *el, wchar_t *ch)
+void Input::sendMessage(Message msg)
 {
-    Input *input = 0;
-    el_wget(el, EL_CLIENTDATA, &input);
-    assert(input);
+    const char m = static_cast<char>(msg);
+    int w;
+    do {
+        w = ::write(mMsgPipe[1], &m, 1);
+    } while (w == -1 && errno == EINTR);
+    if (w == -1)
+        fprintf(stderr, "Unable to send message: %d\n", errno);
+}
 
-    int& readPipe = input->mPipe[0];
+int Input::processFiledescriptors(int mode, wchar_t* ch)
+{
+    int& readStdout = mStdoutPipe[0];
+    int& readMsg = mMsgPipe[0];
 
-    if (readPipe == -1)
+    if (readStdout == -1 || readMsg == -1)
         return -1;
+
+    int max = STDIN_FILENO;
+    if (readStdout > max)
+        max = readStdout;
+    if (readMsg > max)
+        max = readMsg;
+
+    const bool processStdin = (mode & ProcessStdin);
+    assert((processStdin && ch) || (mState == Waiting && !ch));
 
     fd_set rset;
     char out[4];
     int outpos;
     char buf[8192];
     int r;
-    const int max = std::max(readPipe, STDIN_FILENO) + 1;
     for (;;) {
         FD_ZERO(&rset);
-        FD_SET(readPipe, &rset);
+        FD_SET(readStdout, &rset);
+        FD_SET(readMsg, &rset);
         FD_SET(STDIN_FILENO, &rset);
-        r = ::select(max, &rset, 0, 0, 0);
+        r = ::select(max + 1, &rset, 0, 0, 0);
         if (r <= 0) {
             fprintf(stderr, "Select returned <= 0\n");
             return -1;
         }
-        if (FD_ISSET(readPipe, &rset)) {
+        if (FD_ISSET(readStdout, &rset)) {
             for (;;) {
-                r = ::read(readPipe, buf, sizeof(buf) - 1);
+                r = ::read(readStdout, buf, sizeof(buf) - 1);
                 if (r > 0) {
                     *(buf + r) = '\0';
                     fprintf(stdout, "%s\n", buf);
                 } else {
                     if (!r || (r == -1 && errno != EINTR && errno != EAGAIN)) {
-                        ::close(readPipe);
-                        readPipe = -1;
-                        fprintf(stderr, "Read from pipe returned %d (%d)\n", r, errno);
+                        ::close(readStdout);
+                        readStdout = -1;
+                        fprintf(stderr, "Read from stdout pipe returned %d (%d)\n", r, errno);
                         return -1;
                     }
-                    if (errno == EAGAIN) {
+                    if (r == -1 && errno == EAGAIN) {
                         fflush(stdout);
-                        if (!FD_ISSET(STDIN_FILENO, &rset)) {
+                        if (processStdin && !FD_ISSET(STDIN_FILENO, &rset)) {
                             //printf("refreshing\n");
-                            el_wset(el, EL_REFRESH);
+                            el_wset(mEl, EL_REFRESH);
                         }
                         break;
                     }
                 }
             }
         }
-        if (FD_ISSET(STDIN_FILENO, &rset)) {
+        if (FD_ISSET(readMsg, &rset)) {
             int r;
-            if (input->isUtf8()) {
+            char msg;
+            for (;;) {
+                r = ::read(readMsg, &msg, 1);
+                if (r == 1) {
+                    handleMessage(static_cast<Message>(msg));
+                    if (!processStdin && mState == Normal)
+                        return 0;
+                }
+                if (!r || (r == -1 && errno != EINTR && errno != EAGAIN)) {
+                    ::close(readMsg);
+                    readMsg = -1;
+                    fprintf(stderr, "Read from message pipe returned %d (%d)\n", r, errno);
+                    return -1;
+                }
+                if (r == -1 && errno == EAGAIN) {
+                    break;
+                }
+            }
+        }
+        if (processStdin && FD_ISSET(STDIN_FILENO, &rset)) {
+            int r;
+            if (isUtf8()) {
                 outpos = 0;
                 for (;;) {
                     r = ::read(STDIN_FILENO, out + outpos++, 1);
@@ -184,12 +225,49 @@ int Input::getChar(EditLine *el, wchar_t *ch)
                 *ch = out[0];
                 return 1;
             }
-            fprintf(stderr, "Neither readPipe nor STDIN_FILENO hit\n");
+            fprintf(stderr, "Neither readStdout nor STDIN_FILENO hit\n");
             return -1;
         }
     }
     fprintf(stderr, "Out of getChar\n");
     return -1;
+}
+
+int Input::getChar(EditLine *el, wchar_t *ch)
+{
+    Input *input = 0;
+    el_wget(el, EL_CLIENTDATA, &input);
+    assert(input);
+
+    return input->processFiledescriptors(ProcessStdin, ch);
+}
+
+static void initPipe(int pipe[2])
+{
+    int flags, ret;
+    ret = ::pipe(pipe);
+    if (ret != -1) {
+        do {
+            flags = fcntl(pipe[0], F_GETFL, 0);
+        } while (flags == -1 && errno == EINTR);
+        if (flags != -1) {
+            do {
+                ret = fcntl(pipe[0], F_SETFL, flags | O_NONBLOCK);
+            } while (ret == -1 && errno == EINTR);
+        }
+    }
+}
+
+static void closePipe(int pipe[2])
+{
+    if (pipe[0] != -1) {
+        ::close(pipe[0]);
+        pipe[0] = -1;
+    }
+    if (pipe[1] != -1) {
+        ::close(pipe[1]);
+        pipe[1] = -1;
+    }
 }
 
 void Input::run()
@@ -200,18 +278,8 @@ void Input::run()
 
     new InputLogOutput(this);
 
-    int flags, ret;
-    ret = ::pipe(mPipe);
-    if (ret != -1) {
-        do {
-            flags = fcntl(mPipe[0], F_GETFL, 0);
-        } while (flags == -1 && errno == EINTR);
-        if (flags != -1) {
-            do {
-                ret = fcntl(mPipe[0], F_SETFL, flags | O_NONBLOCK);
-            } while (ret == -1 && errno == EINTR);
-        }
-    }
+    initPipe(mStdoutPipe);
+    initPipe(mMsgPipe);
 
     for (int i=0; environ[i]; ++i) {
         char *eq = strchr(environ[i], '=');
@@ -230,7 +298,7 @@ void Input::run()
     const Path elFile = home + "/.jshel";
     const Path histFile = home + "/.jshist";
 
-    EditLine* el = nullptr;
+    mEl = nullptr;
     int numc;
     const wchar_t* line;
     HistoryW* hist;
@@ -240,34 +308,34 @@ void Input::run()
     history_w(hist, &ev, H_SETSIZE, 100);
     history_w(hist, &ev, H_LOAD, histFile.constData());
 
-    el = el_init(mArgv[0], stdin, stdout, stderr);
-    el_wset(el, EL_CLIENTDATA, this);
+    mEl = el_init(mArgv[0], stdin, stdout, stderr);
+    el_wset(mEl, EL_CLIENTDATA, this);
 
-    el_wset(el, EL_EDITOR, L"emacs");
-    el_wset(el, EL_SIGNAL, 1);
-    el_wset(el, EL_GETCFN, &Input::getChar);
-    el_wset(el, EL_PROMPT_ESC, prompt, '\1');
+    el_wset(mEl, EL_EDITOR, L"emacs");
+    el_wset(mEl, EL_SIGNAL, 1);
+    el_wset(mEl, EL_GETCFN, &Input::getChar);
+    el_wset(mEl, EL_PROMPT_ESC, prompt, '\1');
     if (const char *home = getenv("HOME")) {
         Path rc = home;
         rc += "/.editrc";
         if (rc.exists())
-            el_source(el, rc.constData());
+            el_source(mEl, rc.constData());
     }
 
-    el_wset(el, EL_HIST, history_w, hist);
+    el_wset(mEl, EL_HIST, history_w, hist);
 
     // complete
-    el_wset(el, EL_ADDFN, L"ed-complete", L"Complete argument", &Input::elComplete);
+    el_wset(mEl, EL_ADDFN, L"ed-complete", L"Complete argument", &Input::elComplete);
     // bind tab
-    el_wset(el, EL_BIND, L"^I", L"ed-complete", NULL);
+    el_wset(mEl, EL_BIND, L"^I", L"ed-complete", NULL);
 
-    el_source(el, elFile.constData());
+    el_source(mEl, elFile.constData());
 
-    while ((line = el_wgets(el, &numc)) && numc) {
+    while ((line = el_wgets(mEl, &numc)) && numc) {
         if (int s = gotsig.load()) {
             fprintf(stderr, "got signal %d\n", s);
             gotsig.store(0);
-            el_reset(el);
+            el_reset(mEl);
         }
 
         String l = util::wcharToUtf8(line);
@@ -300,15 +368,14 @@ void Input::run()
         }
     }
 
-    el_end(el);
+    el_end(mEl);
     history_w(hist, &ev, H_SAVE, histFile.constData());
     history_wend(hist);
 
     fprintf(stdout, "\n");
 
-    if (mPipe[0] != -1)
-        ::close(mPipe[0]);
-    ::close(mPipe[1]);
+    closePipe(mMsgPipe);
+    closePipe(mStdoutPipe);
 
     EventLoop::mainEventLoop()->quit();
 }
@@ -528,8 +595,28 @@ List<Shell::Token> Input::tokenize(String line, unsigned int flags, String &err)
     return tokens;
 }
 
+void Input::handleMessage(Message msg)
+{
+    switch (msg) {
+    case Resume:
+        //el_wset(mEl, EL_REFRESH);
+        mState = Normal;
+        break;
+    }
+}
+
 void Input::runCommand(const String& command, const List<String>& arguments)
 {
+    if (EventLoop::SharedPtr loop = EventLoop::mainEventLoop()) {
+        Input::WeakPtr input = shared_from_this();
+        loop->callLaterMove([input](const String& cmd, const List<String>& args) {
+                if (Input::SharedPtr in = input.lock()) {
+                    in->sendMessage(Input::Resume);
+                }
+            }, std::move(command), std::move(arguments));
+        mState = Waiting;
+        processFiledescriptors();
+    }
     // mEventLoop->callLaterMove([](const String& cmd, const List<String>& args) {
     //         Process* proc = new Process;
     //         ChainProcess* chain = new ChainProcess(proc);

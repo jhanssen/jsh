@@ -6,6 +6,7 @@
 #include <rct/EventLoop.h>
 #include <functional>
 #include <mutex>
+#include <memory>
 #include <condition_variable>
 
 class Interpreter;
@@ -41,7 +42,7 @@ private:
     int mArgc;
     char** mArgv;
     Interpreter *mInterpreter;
-    Input* mInput;
+    std::shared_ptr<Input> mInput;
     EventLoop::SharedPtr mEventLoop;
 
 private:

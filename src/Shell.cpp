@@ -10,7 +10,7 @@ int Shell::exec()
     mEventLoop = std::make_shared<EventLoop>();
     mEventLoop->init(EventLoop::MainEventLoop);
 
-    mInput = new Input(this, mArgc, mArgv);
+    mInput = std::make_shared<Input>(this, mArgc, mArgv);
     mInput->start();
 
     const Path home = util::homeDirectory();
