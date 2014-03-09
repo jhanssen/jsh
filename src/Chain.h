@@ -3,17 +3,21 @@
 
 #include <rct/String.h>
 #include <rct/SignalSlot.h>
+#include <memory>
 
 class Chain
 {
 public:
+    typedef std::shared_ptr<Chain> SharedPtr;
+    typedef std::weak_ptr<Chain> WeakPtr;
+
     Chain() : mErrToOut(false), mNext(0) { }
-    virtual ~Chain() { }
+    virtual ~Chain() { delete mNext; }
 
     void setStdErrToStdOut(bool errToOut) { mErrToOut = true; }
     void chain(Chain* chain) { assert(!mNext); mNext = chain; chain->init(this); }
 
-    void exec();
+    void finalize();
 
     Signal<std::function<void(String&&)> >& finishedStdOut() { return mFinishedStdOut; };
     Signal<std::function<void(String&&)> >& finishedStdErr() { return mFinishedStdErr; };

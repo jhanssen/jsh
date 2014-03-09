@@ -39,7 +39,6 @@ private:
     List<Shell::Token> tokenize(String line, unsigned int flags, String &error) const;
     bool expandEnvironment(String &string, String &err) const;
     void process(const List<Shell::Token> &tokens);
-    void runCommand(const String& command, const List<String>& arguments);
     void handleMessage(Message msg);
     String env(const String &var) const { return mEnviron.value(var); }
     enum CompletionResult {
@@ -53,6 +52,7 @@ private:
     static void addArg(List<Shell::Token> &tokens, const char *&last, const char *str, unsigned int flags);
     static unsigned char elComplete(EditLine *el, int);
     static int getChar(EditLine *el, wchar_t *ch);
+    static void processTokens(const List<Shell::Token>& tokens, const Input::WeakPtr& input);
     bool isUtf8() const { return mIsUtf8; }
 
     enum ProcessMode {

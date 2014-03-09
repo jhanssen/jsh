@@ -447,18 +447,6 @@ static inline String stripBraces(String&& string)
     return str;
 }
 
-void Input::addPrev(List<Shell::Token> &tokens, const char *&last, const char *str, unsigned int flags)
-{
-    if (last && last < str) {
-        tokens.append({Shell::Token::Command, stripBraces(String(last, str - last + 1))});
-        if (flags & Tokenize_CollapseWhitespace) {
-            eatEscapes(tokens.last().string);
-            tokens.last().string.chomp(' ');
-        }
-    }
-    last = 0;
-}
-
 void Input::addArg(List<Shell::Token> &tokens, const char *&last, const char *str, unsigned int flags)
 {
     if (last && last < str) {
@@ -466,6 +454,22 @@ void Input::addArg(List<Shell::Token> &tokens, const char *&last, const char *st
         if (flags & Tokenize_CollapseWhitespace) {
             eatEscapes(tokens.last().args.last());
             tokens.last().args.last().chomp(' ');
+        }
+    }
+    last = 0;
+}
+
+void Input::addPrev(List<Shell::Token> &tokens, const char *&last, const char *str, unsigned int flags)
+{
+    if (!tokens.isEmpty() && tokens.last().type == Shell::Token::Command) {
+        addArg(tokens, last, str, flags);
+        return;
+    }
+    if (last && last < str) {
+        tokens.append({Shell::Token::Command, stripBraces(String(last, str - last + 1))});
+        if (flags & Tokenize_CollapseWhitespace) {
+            eatEscapes(tokens.last().string);
+            tokens.last().string.chomp(' ');
         }
     }
     last = 0;
@@ -568,11 +572,7 @@ List<Shell::Token> Input::tokenize(String line, unsigned int flags, String &err)
             break;
         case ' ':
             if (escapes % 2 == 0) {
-                if (!tokens.isEmpty() && tokens.last().type == Shell::Token::Command) {
-                    addArg(tokens, last, str, flags);
-                } else {
-                    addPrev(tokens, last, str, flags);
-                }
+                addPrev(tokens, last, str, flags);
             }
             break;
         default:
@@ -605,49 +605,91 @@ void Input::handleMessage(Message msg)
     }
 }
 
-void Input::runCommand(const String& command, const List<String>& arguments)
+static void runChain(Chain::SharedPtr chain, const Input::WeakPtr& input, bool notifyInput)
 {
-    if (EventLoop::SharedPtr loop = EventLoop::mainEventLoop()) {
-        Input::WeakPtr input = shared_from_this();
-        loop->callLaterMove([input](const String& cmd, const List<String>& args) {
-                Process* proc = new Process;
-                ChainProcess* chain = new ChainProcess(proc);
-                chain->finishedStdOut().connect<EventLoop::Move>(std::bind([](String&& str) {
-                            fprintf(stdout, "%s", str.constData());
-                        }, std::placeholders::_1));
-                chain->finishedStdErr().connect<EventLoop::Move>(std::bind([](String&& str) {
-                            fprintf(stderr, "%s", str.constData());
-                        }, std::placeholders::_1));
-                chain->complete().connect([input, chain]() {
-                        if (Input::SharedPtr in = input.lock()) {
-                            in->sendMessage(Input::Resume);
-                        }
-                        delete chain;
-                    });
-
-                chain->exec();
-                proc->start(cmd, args);
-            }, std::move(command), std::move(arguments));
-        mState = Waiting;
-        processFiledescriptors();
-    }
+    chain->finishedStdOut().connect<EventLoop::Move>(std::bind([](String&& str) {
+                fprintf(stdout, "%s", str.constData());
+            }, std::placeholders::_1));
+    chain->finishedStdErr().connect<EventLoop::Move>(std::bind([](String&& str) {
+                fprintf(stderr, "%s", str.constData());
+            }, std::placeholders::_1));
+    chain->complete().connect([input, chain, notifyInput]() mutable {
+            if (notifyInput) {
+                if (Input::SharedPtr in = input.lock()) {
+                    in->sendMessage(Input::Resume);
+                }
+            }
+            // technically not needed I suppose but looks nicer
+            chain.reset();
+        });
+    chain->finalize();
 }
+
+void Input::processTokens(const List<Shell::Token>& tokens, const Input::WeakPtr& input)
+{
+    Chain::SharedPtr chain;
+    auto token = tokens.cbegin();
+    const auto end = tokens.cend();
+    while (token != end) {
+        switch (token->type) {
+        case Shell::Token::Command: {
+            ChainProcess* proc = new ChainProcess;
+            if (proc->start(token->string, token->args)) {
+                if (!chain)
+                    chain.reset(proc);
+                else
+                    chain->chain(proc);
+            } else {
+                printf("Invalid command: %s\n", token->string.constData());
+                chain.reset();
+                // make sure we bail out
+                token = end;
+                continue;
+            }
+            break; }
+        case Shell::Token::Javascript:
+            break;
+        case Shell::Token::Operator:
+            ++token;
+            if (token != end) {
+                chain->complete().connect(std::bind(&Input::processTokens, std::move(List<Shell::Token>(token, end)), std::move(input)));
+            }
+            runChain(chain, input, token == end);
+            return;
+        case Shell::Token::Pipe:
+            break;
+        }
+        ++token;
+    }
+
+    if (chain) {
+        runChain(chain, input, true);
+    } else {
+        if (Input::SharedPtr in = input.lock()) {
+            in->sendMessage(Input::Resume);
+        }
+    }
+ }
 
 void Input::process(const List<Shell::Token> &tokens)
 {
-    for (const auto& token : tokens) {
-        String args;
-        for (const String& arg : token.args) {
-            args += arg + "-";
-        }
-        if (!args.isEmpty())
-            args.chop(1);
-        error() << String::format<128>("[%s] %s (%s)", token.string.constData(), Shell::Token::typeName(token.type), args.constData());
-        switch (token.type) {
-        case Shell::Token::Command:
-            runCommand(token.string, token.args);
-            break;
-        }
+    // for (const auto& token : tokens) {
+    //     String args;
+    //     for (const String& arg : token.args) {
+    //         args += arg + ", ";
+    //     }
+    //     if (!args.isEmpty())
+    //         args.chop(2);
+    //     error() << String::format<128>("[%s] %s (%s)", token.string.constData(), Shell::Token::typeName(token.type), args.constData());
+    // }
+    // return;
+
+    if (EventLoop::SharedPtr loop = EventLoop::mainEventLoop()) {
+        Input::WeakPtr input = shared_from_this();
+        loop->callLaterMove(std::bind(processTokens, std::placeholders::_1, std::placeholders::_2),
+                            std::move(tokens), std::move(input));
+        mState = Waiting;
+        processFiledescriptors();
     }
 }
 

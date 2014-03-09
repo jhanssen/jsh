@@ -1,6 +1,6 @@
 #include "Chain.h"
 
-void Chain::exec()
+void Chain::finalize()
 {
     Chain* cur = this;
     while (cur->mNext) {

@@ -2,17 +2,15 @@
 #include <stdio.h>
 #include <assert.h>
 
-ChainProcess::ChainProcess(Process* process)
-    : mProcess(process)
+ChainProcess::ChainProcess()
 {
-    mProcess->readyReadStdOut().connect(std::bind(&ChainProcess::processStdout, this, std::placeholders::_1));
-    mProcess->readyReadStdErr().connect(std::bind(&ChainProcess::processStderr, this, std::placeholders::_1));
-    mProcess->finished().connect(std::bind(&ChainProcess::processFinished, this, std::placeholders::_1));
+    Process::readyReadStdOut().connect(std::bind(&ChainProcess::processStdout, this, std::placeholders::_1));
+    Process::readyReadStdErr().connect(std::bind(&ChainProcess::processStderr, this, std::placeholders::_1));
+    Process::finished().connect(std::bind(&ChainProcess::processFinished, this, std::placeholders::_1));
 }
 
 ChainProcess::~ChainProcess()
 {
-    delete mProcess;
 }
 
 void ChainProcess::init(Chain* previous)
@@ -24,13 +22,13 @@ void ChainProcess::init(Chain* previous)
 
 void ChainProcess::processStdout(Process*)
 {
-    String data = mProcess->readAllStdOut();
+    String data = Process::readAllStdOut();
     stdout()(std::move(data));
 }
 
 void ChainProcess::processStderr(Process*)
 {
-    String data = mProcess->readAllStdErr();
+    String data = Process::readAllStdErr();
     if (errIsOut())
         stdout()(std::move(data));
     else
@@ -39,14 +37,12 @@ void ChainProcess::processStderr(Process*)
 
 void ChainProcess::processFinished(Process*)
 {
-    delete mProcess;
-    mProcess = 0;
     closed()(this);
 }
 
 void ChainProcess::previousStdout(String&& stdout)
 {
-    mProcess->write(stdout);
+    Process::write(stdout);
 }
 
 void ChainProcess::previousStderr(String&& stderr)
@@ -57,5 +53,6 @@ void ChainProcess::previousStderr(String&& stderr)
 void ChainProcess::previousClosed(Chain* chain)
 {
     assert(chain != this);
-    delete chain;
+    (void)chain;
+    Process::closeStdIn();
 }
