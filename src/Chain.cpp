@@ -8,6 +8,7 @@ void Chain::exec()
     }
     cur->stdout().connect(std::bind(&Chain::lastStdOut, this, std::placeholders::_1));
     cur->stderr().connect(std::bind(&Chain::lastStdErr, this, std::placeholders::_1));
+    cur->closed().connect(std::bind(&Chain::lastClosed, this));
 }
 
 void Chain::lastStdOut(String&& stdout)
@@ -18,4 +19,9 @@ void Chain::lastStdOut(String&& stdout)
 void Chain::lastStdErr(String&& stderr)
 {
     mFinishedStdErr(std::move(stderr));
+}
+
+void Chain::lastClosed()
+{
+    mComplete();
 }

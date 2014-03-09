@@ -610,25 +610,26 @@ void Input::runCommand(const String& command, const List<String>& arguments)
     if (EventLoop::SharedPtr loop = EventLoop::mainEventLoop()) {
         Input::WeakPtr input = shared_from_this();
         loop->callLaterMove([input](const String& cmd, const List<String>& args) {
-                if (Input::SharedPtr in = input.lock()) {
-                    in->sendMessage(Input::Resume);
-                }
+                Process* proc = new Process;
+                ChainProcess* chain = new ChainProcess(proc);
+                chain->finishedStdOut().connect<EventLoop::Move>(std::bind([](String&& str) {
+                            fprintf(stdout, "%s", str.constData());
+                        }, std::placeholders::_1));
+                chain->finishedStdErr().connect<EventLoop::Move>(std::bind([](String&& str) {
+                            fprintf(stderr, "%s", str.constData());
+                        }, std::placeholders::_1));
+                chain->complete().connect([input]() {
+                        if (Input::SharedPtr in = input.lock()) {
+                            in->sendMessage(Input::Resume);
+                        }
+                    });
+
+                chain->exec();
+                proc->start(cmd, args);
             }, std::move(command), std::move(arguments));
         mState = Waiting;
         processFiledescriptors();
     }
-    // mEventLoop->callLaterMove([](const String& cmd, const List<String>& args) {
-    //         Process* proc = new Process;
-    //         ChainProcess* chain = new ChainProcess(proc);
-    //         chain->finishedStdOut().connect<EventLoop::Move>(std::bind([](String&& str) {
-    //                     fprintf(stdout, "%s", str.constData());
-    //                 }, std::placeholders::_1));
-    //         chain->finishedStdErr().connect<EventLoop::Move>(std::bind([](String&& str) {
-    //                     fprintf(stderr, "%s", str.constData());
-    //                 }, std::placeholders::_1));
-    //         chain->exec();
-    //         proc->start(cmd, args);
-    //     }, std::move(command), std::move(arguments));
 }
 
 void Input::process(const List<Shell::Token> &tokens)
