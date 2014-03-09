@@ -47,6 +47,7 @@ private:
 
     Chain* mNext;
     friend class ChainProcess;
+    friend class ChainJavaScript;
 };
 
 #endif

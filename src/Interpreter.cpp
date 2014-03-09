@@ -45,7 +45,7 @@ public:
     String script, name;
 };
 
-static inline String Print(const v8::FunctionCallbackInfo<v8::Value>& args)
+static inline String&& Print(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
     bool first = true;
     v8::Isolate* isolate = args.GetIsolate();
@@ -68,7 +68,7 @@ static inline String Print(const v8::FunctionCallbackInfo<v8::Value>& args)
             out += cstr;
         }
     }
-    return out;
+    return std::move(out);
 }
 
 static void PrintStdout(const v8::FunctionCallbackInfo<v8::Value>& args)
@@ -89,24 +89,24 @@ static void PrintStderr(const v8::FunctionCallbackInfo<v8::Value>& args)
 
 static void EmitStdout(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
-    const String& out = Print(args);
+    String out = std::move(Print(args));
     if (!out.isEmpty()) {
         v8::Isolate* isolate = args.GetIsolate();
         InterpreterScopeData* scope = static_cast<InterpreterScopeData*>(isolate->GetData(1));
         assert(scope);
-        scope->scope->stdout()(out);
+        scope->scope->stdout()(std::move(out));
     }
 }
 
 static void EmitStderr(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
-    const String& err = Print(args);
+    String err = std::move(Print(args));
     if (!err.isEmpty()) {
         fprintf(stdout, "%s\n", err.constData());
         v8::Isolate* isolate = args.GetIsolate();
         InterpreterScopeData* scope = static_cast<InterpreterScopeData*>(isolate->GetData(1));
         assert(scope);
-        scope->scope->stderr()(err);
+        scope->scope->stderr()(std::move(err));
     }
 }
 
@@ -549,6 +549,7 @@ void InterpreterScopeData::exec(const String& script, const String& data)
 
     v8::Local<v8::Object> stdinTemplate = v8::Object::New(isolate);
     v8::Local<v8::Object> stdinOnTemplate = v8::Function::New(isolate, StdinOn);
+    stdinTemplate->Set(v8::String::NewFromUtf8(isolate, "on"), stdinOnTemplate);
     global->Set(v8::String::NewFromUtf8(isolate, "stdin"), stdinTemplate);
     stdin.Reset(isolate, stdinTemplate);
 

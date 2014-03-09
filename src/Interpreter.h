@@ -38,8 +38,8 @@ public:
         };
         void notify(NotifyType type, const String& data = String());
 
-        Signal<std::function<void(const String& data)> >& stdout() { return mStdin; }
-        Signal<std::function<void(const String& data)> >& stderr() { return mStdout; }
+        Signal<std::function<void(String&&)> >& stdout() { return mStdin; }
+        Signal<std::function<void(String&&)> >& stderr() { return mStdout; }
         Signal<std::function<void()> >& closed() { return mClosed; }
 
         void exec();
@@ -49,7 +49,7 @@ public:
         InterpreterScope(const InterpreterScope&) = delete;
         InterpreterScope& operator=(const InterpreterScope&) = delete;
 
-        Signal<std::function<void(const String&)> > mStdin, mStdout;
+        Signal<std::function<void(String&&)> > mStdin, mStdout;
         Signal<std::function<void()> > mClosed;
 
     private:
