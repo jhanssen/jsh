@@ -23,12 +23,13 @@ class InterpreterScopeData
 {
 public:
     InterpreterScopeData(const Interpreter::SharedPtr& inter, Interpreter::InterpreterScope* sco, const String& scr, const String& nam)
-        : interpreter(inter), scope(sco), script(scr), name(nam)
+        : interpreter(inter), scope(sco), source(scr), name(nam)
     {
     }
     ~InterpreterScopeData();
 
-    void exec(const String& script, const String& data);
+    void exec();
+    bool parse(const String& script, const String& name);
 
     Interpreter::SharedPtr interpreter;
     Interpreter::InterpreterScope* scope;
@@ -41,11 +42,12 @@ public:
     List<Listener*> dataListeners, closeListeners;
     v8::UniquePersistent<v8::Function> stdout, stderr;
     v8::UniquePersistent<v8::Object> stdin;
+    v8::UniquePersistent<v8::Script> script;
 
-    String script, name;
+    String source, name;
 };
 
-static inline String&& Print(const v8::FunctionCallbackInfo<v8::Value>& args)
+static inline String Print(const v8::FunctionCallbackInfo<v8::Value>& args, bool newline = false)
 {
     bool first = true;
     v8::Isolate* isolate = args.GetIsolate();
@@ -68,6 +70,8 @@ static inline String&& Print(const v8::FunctionCallbackInfo<v8::Value>& args)
             out += cstr;
         }
     }
+    if (newline)
+        out += "\n";
     return std::move(out);
 }
 
@@ -89,7 +93,7 @@ static void PrintStderr(const v8::FunctionCallbackInfo<v8::Value>& args)
 
 static void EmitStdout(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
-    String out = std::move(Print(args));
+    String out = Print(args, true);
     if (!out.isEmpty()) {
         v8::Isolate* isolate = args.GetIsolate();
         InterpreterScopeData* scope = static_cast<InterpreterScopeData*>(isolate->GetData(1));
@@ -100,7 +104,7 @@ static void EmitStdout(const v8::FunctionCallbackInfo<v8::Value>& args)
 
 static void EmitStderr(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
-    String err = std::move(Print(args));
+    String err = Print(args, true);
     if (!err.isEmpty()) {
         fprintf(stdout, "%s\n", err.constData());
         v8::Isolate* isolate = args.GetIsolate();
@@ -379,7 +383,7 @@ Value Interpreter::load(const Path& path)
     return eval(path.readAll(), path.fileName());
 }
 
-Value Interpreter::eval(const String& data, const String& name)
+Value Interpreter::eval(const String& data, const String& name, bool* ok)
 {
     v8::Isolate* isolate = v8::Isolate::GetCurrent();
     v8::HandleScope scope(isolate);
@@ -393,12 +397,16 @@ Value Interpreter::eval(const String& data, const String& name)
     v8::TryCatch try_catch;
     v8::Handle<v8::Script> script = v8::Script::Compile(source, fileName);
     if (script.IsEmpty()) {
+        if (ok)
+            *ok = false;
         error() << "script" << name << "didn't compile";
         return Value();
     }
 
     const v8::Handle<v8::Value> result = script->Run();
     if (try_catch.HasCaught()) {
+        if (ok)
+            *ok = false;
         const v8::Handle<v8::Message> msg = try_catch.Message();
         {
             const v8::String::Utf8Value str(msg->Get());
@@ -411,6 +419,8 @@ Value Interpreter::eval(const String& data, const String& name)
         return Value();
     }
 
+    if (ok)
+        *ok = true;
     return mData->v8ValueToValue(result);
 }
 
@@ -448,9 +458,9 @@ Value Interpreter::call(const String &object, const String &function, const List
     return mData->v8ValueToValue(func->Call(obj, arguments.size(), arguments.data()));
 }
 
-Interpreter::InterpreterScope&& Interpreter::createScope(const String& script, const String& name)
+Interpreter::InterpreterScope::SharedPtr Interpreter::createScope(const String& script, const String& name)
 {
-    return std::move(InterpreterScope(shared_from_this(), script, name));
+    return InterpreterScope::SharedPtr(new InterpreterScope(shared_from_this(), script, name));
 }
 
 Interpreter::InterpreterScope::InterpreterScope(const Interpreter::SharedPtr& interpreter, const String& script, const String& name)
@@ -458,29 +468,19 @@ Interpreter::InterpreterScope::InterpreterScope(const Interpreter::SharedPtr& in
 {
 }
 
-Interpreter::InterpreterScope::InterpreterScope(InterpreterScope&& other)
-    : mData(other.mData)
-{
-    mData->scope = this;
-    other.mData = 0;
-}
-
-Interpreter::InterpreterScope& Interpreter::InterpreterScope::operator=(InterpreterScope&& other)
-{
-    mData = other.mData;
-    mData->scope = this;
-    other.mData = 0;
-    return *this;
-}
-
 Interpreter::InterpreterScope::~InterpreterScope()
 {
     delete mData;
 }
 
+bool Interpreter::InterpreterScope::parse()
+{
+    return mData->parse(mData->source, mData->name);
+}
+
 void Interpreter::InterpreterScope::exec()
 {
-    mData->exec(mData->script, mData->name);
+    mData->exec();
 }
 
 void Interpreter::InterpreterScope::notify(NotifyType type, const String& data)
@@ -494,6 +494,7 @@ void Interpreter::InterpreterScope::notify(NotifyType type, const String& data)
             v8::Local<v8::Value> r = v8::Local<v8::Value>::New(isolate, func->recv);
             f->Call(r, 0, 0);
         }
+#warning need to check if there are pending timers here before emitting this signal when the time comes
         mClosed();
         break;
     case StdInData:
@@ -516,6 +517,7 @@ InterpreterScopeData::~InterpreterScopeData()
     isolate->SetData(1, 0);
     v8::HandleScope scope(isolate);
     v8::Local<v8::Context> context = v8::Local<v8::Context>::New(isolate, interpreter->mData->context);
+    v8::Context::Scope contextScope(context);
     v8::Local<v8::Object> global = context->Global();
     global->Set(v8::String::NewFromUtf8(isolate, "stdout"), v8::Undefined(isolate));
     global->Set(v8::String::NewFromUtf8(isolate, "stderr"), v8::Undefined(isolate));
@@ -529,7 +531,7 @@ InterpreterScopeData::~InterpreterScopeData()
     }
 }
 
-void InterpreterScopeData::exec(const String& script, const String& data)
+bool InterpreterScopeData::parse(const String& source, const String& name)
 {
     // set up the output functions
     v8::Isolate* isolate = v8::Isolate::GetCurrent();
@@ -538,6 +540,8 @@ void InterpreterScopeData::exec(const String& script, const String& data)
     v8::HandleScope scope(isolate);
 
     v8::Local<v8::Context> context = v8::Local<v8::Context>::New(isolate, interpreter->mData->context);
+    v8::Context::Scope contextScope(context);
+
     v8::Local<v8::Object> global = context->Global();
 
     v8::Local<v8::Function> stdoutTemplate = v8::Function::New(isolate, EmitStdout);
@@ -553,6 +557,47 @@ void InterpreterScopeData::exec(const String& script, const String& data)
     global->Set(v8::String::NewFromUtf8(isolate, "stdin"), stdinTemplate);
     stdin.Reset(isolate, stdinTemplate);
 
-    const String func = "(function() {" + script + "})()";
-    interpreter->eval(script, data);
+    const String func = "(function() {" + source + "})()";
+
+    v8::Handle<v8::String> fileName = v8::String::NewFromUtf8(isolate, name.constData());
+    v8::Handle<v8::String> sourceString = v8::String::NewFromUtf8(isolate, func.constData());
+
+    v8::Handle<v8::Script> scriptTemplate = v8::Script::Compile(sourceString, fileName);
+    if (scriptTemplate.IsEmpty()) {
+        error() << "script" << name << "didn't compile";
+        return false;
+    }
+
+    script.Reset(isolate, scriptTemplate);
+    return true;
+}
+
+void InterpreterScopeData::exec()
+{
+    v8::Isolate* isolate = v8::Isolate::GetCurrent();
+    assert(isolate->GetData(1) == this);
+
+    v8::HandleScope scope(isolate);
+
+    v8::Local<v8::Context> context = v8::Local<v8::Context>::New(isolate, interpreter->mData->context);
+    v8::Context::Scope contextScope(context);
+
+    v8::TryCatch try_catch;
+
+    assert(!script.IsEmpty());
+    v8::Handle<v8::Script> localScript = v8::Local<v8::Script>::New(isolate, script);
+    assert(!script.IsEmpty());
+
+    const v8::Handle<v8::Value> result = localScript->Run();
+    if (try_catch.HasCaught()) {
+        const v8::Handle<v8::Message> msg = try_catch.Message();
+        {
+            const v8::String::Utf8Value str(msg->Get());
+            error() << ToCString(str);
+        }
+        {
+            const v8::String::Utf8Value str(msg->GetScriptResourceName());
+            error() << String::format<64>("At %s:%d", ToCString(str), msg->GetLineNumber());
+        }
+    }
 }

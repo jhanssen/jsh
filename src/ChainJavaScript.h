@@ -11,13 +11,15 @@ public:
     typedef std::shared_ptr<ChainJavaScript> SharedPtr;
     typedef std::weak_ptr<ChainJavaScript> WeakPtr;
 
-    ChainJavaScript(Interpreter::InterpreterScope&& scope);
+    ChainJavaScript(Interpreter::InterpreterScope::SharedPtr scope);
     virtual ~ChainJavaScript();
 
-    void exec() { mScope.exec(); }
+    bool parse() { return mScope->parse(); }
 
 protected:
     virtual void init(Chain* previous);
+    virtual void notifyIsFirst() { mScope->notify(Interpreter::InterpreterScope::StdInClosed); }
+    virtual void exec() { return mScope->exec(); }
 
 private:
     void jsStdout(String&& out);
@@ -29,7 +31,7 @@ private:
     void previousClosed(Chain* chain);
 
 private:
-    Interpreter::InterpreterScope mScope;
+    Interpreter::InterpreterScope::SharedPtr mScope;
 };
 
 #endif

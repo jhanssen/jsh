@@ -30,6 +30,8 @@ protected:
 
 protected:
     virtual void init(Chain* previous) = 0;
+    virtual void notifyIsFirst() { }
+    virtual void exec() { }
 
     bool errIsOut() const { return mErrToOut; }
 

@@ -9,6 +9,14 @@ void Chain::finalize()
     cur->stdout().connect(std::bind(&Chain::lastStdOut, this, std::placeholders::_1));
     cur->stderr().connect(std::bind(&Chain::lastStdErr, this, std::placeholders::_1));
     cur->closed().connect(std::bind(&Chain::lastClosed, this, std::placeholders::_1));
+
+    cur = this;
+    while (cur) {
+        cur->exec();
+        cur = cur->mNext;
+    }
+
+    notifyIsFirst();
 }
 
 void Chain::lastStdOut(String&& stdout)

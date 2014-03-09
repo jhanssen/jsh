@@ -2,12 +2,12 @@
 #include <stdio.h>
 #include <assert.h>
 
-ChainJavaScript::ChainJavaScript(Interpreter::InterpreterScope&& scope)
+ChainJavaScript::ChainJavaScript(Interpreter::InterpreterScope::SharedPtr scope)
     : mScope(std::move(scope))
 {
-    mScope.stdout().connect(std::bind(&ChainJavaScript::jsStdout, this, std::placeholders::_1));
-    mScope.stderr().connect(std::bind(&ChainJavaScript::jsStderr, this, std::placeholders::_1));
-    mScope.closed().connect(std::bind(&ChainJavaScript::jsClosed, this));
+    mScope->stdout().connect(std::bind(&ChainJavaScript::jsStdout, this, std::placeholders::_1));
+    mScope->stderr().connect(std::bind(&ChainJavaScript::jsStderr, this, std::placeholders::_1));
+    mScope->closed().connect(std::bind(&ChainJavaScript::jsClosed, this));
 }
 
 ChainJavaScript::~ChainJavaScript()
@@ -41,7 +41,7 @@ void ChainJavaScript::jsClosed()
 
 void ChainJavaScript::previousStdout(String&& stdout)
 {
-    mScope.notify(Interpreter::InterpreterScope::StdInData, stdout);
+    mScope->notify(Interpreter::InterpreterScope::StdInData, stdout);
 }
 
 void ChainJavaScript::previousStderr(String&& stderr)
@@ -53,5 +53,5 @@ void ChainJavaScript::previousClosed(Chain* chain)
 {
     assert(chain != this);
     (void)chain;
-    mScope.notify(Interpreter::InterpreterScope::StdInClosed);
+    mScope->notify(Interpreter::InterpreterScope::StdInClosed);
 }

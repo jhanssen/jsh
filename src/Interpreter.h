@@ -20,7 +20,7 @@ public:
     ~Interpreter();
 
     Value load(const Path &path);
-    Value eval(const String &script, const String &name = String());
+    Value eval(const String &script, const String &name = String(), bool* ok = 0);
 
     Value call(const String &object, const String &function, const List<Value> &args, bool *ok = 0);
     Value call(const String &function, const List<Value> &args, bool *ok = 0) { return call(String(), function, args, ok); }
@@ -28,8 +28,9 @@ public:
     class InterpreterScope
     {
     public:
-        InterpreterScope(InterpreterScope&& other);
-        InterpreterScope& operator=(InterpreterScope&& other);
+        typedef std::shared_ptr<InterpreterScope> SharedPtr;
+        typedef std::weak_ptr<InterpreterScope> WeakPtr;
+
         ~InterpreterScope();
 
         enum NotifyType {
@@ -42,12 +43,15 @@ public:
         Signal<std::function<void(String&&)> >& stderr() { return mStdout; }
         Signal<std::function<void()> >& closed() { return mClosed; }
 
+        bool parse();
         void exec();
 
     private:
         InterpreterScope(const Interpreter::SharedPtr& interpreter, const String& script, const String& name);
         InterpreterScope(const InterpreterScope&) = delete;
         InterpreterScope& operator=(const InterpreterScope&) = delete;
+        InterpreterScope(InterpreterScope&& other) = delete;
+        InterpreterScope& operator=(InterpreterScope&& other) = delete;
 
         Signal<std::function<void(String&&)> > mStdin, mStdout;
         Signal<std::function<void()> > mClosed;
@@ -58,7 +62,7 @@ public:
         friend class Interpreter;
     };
 
-    InterpreterScope&& createScope(const String& script, const String& name = String());
+    InterpreterScope::SharedPtr createScope(const String& script, const String& name = String());
 
 private:
     InterpreterData* mData;

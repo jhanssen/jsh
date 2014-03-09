@@ -607,24 +607,26 @@ void Input::handleMessage(Message msg)
     }
 }
 
-static void runChain(Chain::SharedPtr chain, const Input::WeakPtr& input, bool notifyInput)
+static void runChain(const Chain::WeakPtr& chain, const Input::WeakPtr& input, bool notifyInput)
 {
-    chain->finishedStdOut().connect<EventLoop::Move>(std::bind([](String&& str) {
+    Chain::SharedPtr ptr = chain.lock();
+    assert(ptr);
+    ptr->finishedStdOut().connect<EventLoop::Move>(std::bind([](String&& str) {
                 fprintf(stdout, "%s", str.constData());
             }, std::placeholders::_1));
-    chain->finishedStdErr().connect<EventLoop::Move>(std::bind([](String&& str) {
+    ptr->finishedStdErr().connect<EventLoop::Move>(std::bind([](String&& str) {
                 fprintf(stderr, "%s", str.constData());
             }, std::placeholders::_1));
-    chain->complete().connect([input, chain, notifyInput]() mutable {
+    ptr->complete().connect([input, &ptr, notifyInput]() mutable {
             if (notifyInput) {
                 if (Input::SharedPtr in = input.lock()) {
                     in->sendMessage(Input::Resume);
                 }
             }
             // technically not needed I suppose but looks nicer
-            chain.reset();
+            ptr.reset();
         });
-    chain->finalize();
+    ptr->finalize();
 }
 
 void Input::processTokens(const List<Shell::Token>& tokens, const Input::WeakPtr& input)
@@ -644,6 +646,7 @@ void Input::processTokens(const List<Shell::Token>& tokens, const Input::WeakPtr
             } else {
                 printf("Invalid command: %s\n", token->string.constData());
                 chain.reset();
+                delete proc;
                 // make sure we bail out
                 token = end;
                 continue;
@@ -652,13 +655,22 @@ void Input::processTokens(const List<Shell::Token>& tokens, const Input::WeakPtr
         case Shell::Token::Javascript: {
             Interpreter::SharedPtr interpreter = Shell::interpreter();
             if (interpreter) {
-                Interpreter::InterpreterScope scope = std::move(interpreter->createScope(token->string));
-                ChainJavaScript* js = new ChainJavaScript(std::move(scope));
-                js->exec();
-                if (!chain)
-                    chain.reset(js);
-                else
-                    chain->chain(js);
+                assert(token->string.size() >= 2);
+                Interpreter::InterpreterScope::SharedPtr scope = interpreter->createScope(token->string.mid(1, token->string.size() - 2));
+                ChainJavaScript* js = new ChainJavaScript(scope);
+                if (js->parse()) {
+                    if (!chain) {
+                        chain.reset(js);
+                    } else {
+                        chain->chain(js);
+                    }
+                } else {
+                    chain.reset();
+                    delete js;
+                    // make sure we bail out
+                    token = end;
+                    continue;
+                }
             } else {
                 printf("No intepreter available\n");
             }
