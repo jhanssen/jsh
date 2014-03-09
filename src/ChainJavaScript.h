@@ -1,5 +1,5 @@
-#ifndef CHAINPROCESS_H
-#define CHAINPROCESS_H
+#ifndef CHAINJAVASCRIPT_H
+#define CHAINJAVASCRIPT_H
 
 #include "Chain.h"
 #include "Interpreter.h"

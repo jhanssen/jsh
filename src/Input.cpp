@@ -1,7 +1,9 @@
 #include "Input.h"
+#include "ChainJavaScript.h"
 #include "ChainProcess.h"
 #include "Interpreter.h"
 #include "Util.h"
+#include "Shell.h"
 #include <rct/EventLoop.h>
 #include <rct/Path.h>
 #include <rct/Process.h>
@@ -647,8 +649,20 @@ void Input::processTokens(const List<Shell::Token>& tokens, const Input::WeakPtr
                 continue;
             }
             break; }
-        case Shell::Token::Javascript:
-            break;
+        case Shell::Token::Javascript: {
+            Interpreter::SharedPtr interpreter = Shell::interpreter();
+            if (interpreter) {
+                Interpreter::InterpreterScope scope = std::move(interpreter->createScope(token->string));
+                ChainJavaScript* js = new ChainJavaScript(std::move(scope));
+                js->exec();
+                if (!chain)
+                    chain.reset(js);
+                else
+                    chain->chain(js);
+            } else {
+                printf("No intepreter available\n");
+            }
+            break; }
         case Shell::Token::Operator:
             ++token;
             if (token != end) {

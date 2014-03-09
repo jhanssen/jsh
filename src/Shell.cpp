@@ -5,6 +5,8 @@
 #include "Util.h"
 #include <rct/EventLoop.h>
 
+Interpreter::SharedPtr Shell::sInterpreter;
+
 int Shell::exec()
 {
     mEventLoop = std::make_shared<EventLoop>();
@@ -16,13 +18,13 @@ int Shell::exec()
     const Path home = util::homeDirectory();
     const Path rcFile = home + "/.jshrc.js";
 
-    mInterpreter = std::make_shared<Interpreter>();
-    mInterpreter->load(rcFile);
+    sInterpreter = std::make_shared<Interpreter>();
+    sInterpreter->load(rcFile);
 
     mEventLoop->exec();
     mInput->join();
 
-    mInterpreter.reset();
+    sInterpreter.reset();
 
     return 0;
 }

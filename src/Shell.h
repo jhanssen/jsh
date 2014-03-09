@@ -20,10 +20,11 @@ public:
     }
 
     int exec();
-    Interpreter* interpreter() const { return mInterpreter.get(); }
 
     template<typename T>
     T runAndWait(std::function<T()>&& func);
+
+    static std::shared_ptr<Interpreter> interpreter() { return sInterpreter; }
 
 private:
     struct Token {
@@ -41,9 +42,9 @@ private:
 
     int mArgc;
     char** mArgv;
-    std::shared_ptr<Interpreter> mInterpreter;
     std::shared_ptr<Input> mInput;
     EventLoop::SharedPtr mEventLoop;
+    static std::shared_ptr<Interpreter> sInterpreter;
 
 private:
     friend class Input;
