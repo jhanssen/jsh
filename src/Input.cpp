@@ -368,9 +368,9 @@ void Input::run()
         }
     }
 
-    el_end(mEl);
     history_w(hist, &ev, H_SAVE, histFile.constData());
     history_wend(hist);
+    el_end(mEl);
 
     fprintf(stdout, "\n");
 
@@ -618,10 +618,11 @@ void Input::runCommand(const String& command, const List<String>& arguments)
                 chain->finishedStdErr().connect<EventLoop::Move>(std::bind([](String&& str) {
                             fprintf(stderr, "%s", str.constData());
                         }, std::placeholders::_1));
-                chain->complete().connect([input]() {
+                chain->complete().connect([input, chain]() {
                         if (Input::SharedPtr in = input.lock()) {
                             in->sendMessage(Input::Resume);
                         }
+                        delete chain;
                     });
 
                 chain->exec();

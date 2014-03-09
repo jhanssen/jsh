@@ -22,7 +22,7 @@ public:
 protected:
     Signal<std::function<void(String&&)> >& stdout() { return mStdOut; }
     Signal<std::function<void(String&&)> >& stderr() { return mStdErr; }
-    Signal<std::function<void()> >& closed() { return mClosed; }
+    Signal<std::function<void(Chain*)> >& closed() { return mClosed; }
 
 protected:
     virtual void init(Chain* previous) = 0;
@@ -32,12 +32,13 @@ protected:
 private:
     void lastStdOut(String&& stdout);
     void lastStdErr(String&& stderr);
-    void lastClosed();
+    void lastClosed(Chain*);
 
 private:
     Signal<std::function<void(String&&)> > mStdOut, mStdErr;
     Signal<std::function<void(String&&)> > mFinishedStdOut, mFinishedStdErr;
-    Signal<std::function<void()> > mClosed, mComplete;
+    Signal<std::function<void(Chain*)> > mClosed;
+    Signal<std::function<void()> > mComplete;
     bool mErrToOut;
 
     Chain* mNext;

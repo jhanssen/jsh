@@ -1,5 +1,6 @@
 #include "ChainProcess.h"
 #include <stdio.h>
+#include <assert.h>
 
 ChainProcess::ChainProcess(Process* process)
     : mProcess(process)
@@ -18,7 +19,7 @@ void ChainProcess::init(Chain* previous)
 {
     previous->stdout().connect(std::bind(&ChainProcess::previousStdout, this, std::placeholders::_1));
     previous->stderr().connect(std::bind(&ChainProcess::previousStderr, this, std::placeholders::_1));
-    previous->closed().connect(std::bind(&ChainProcess::previousClosed, this));
+    previous->closed().connect(std::bind(&ChainProcess::previousClosed, this, std::placeholders::_1));
 }
 
 void ChainProcess::processStdout(Process*)
@@ -38,7 +39,9 @@ void ChainProcess::processStderr(Process*)
 
 void ChainProcess::processFinished(Process*)
 {
-    closed()();
+    delete mProcess;
+    mProcess = 0;
+    closed()(this);
 }
 
 void ChainProcess::previousStdout(String&& stdout)
@@ -51,6 +54,8 @@ void ChainProcess::previousStderr(String&& stderr)
     fprintf(::stderr, "%s", stderr.constData());
 }
 
-void ChainProcess::previousClosed()
+void ChainProcess::previousClosed(Chain* chain)
 {
+    assert(chain != this);
+    delete chain;
 }

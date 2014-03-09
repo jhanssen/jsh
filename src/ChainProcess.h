@@ -20,7 +20,7 @@ private:
 
     void previousStdout(String&& stdout);
     void previousStderr(String&& stderr);
-    void previousClosed();
+    void previousClosed(Chain* chain);
 
 private:
     Process* mProcess;
