@@ -31,7 +31,5 @@ void Chain::lastStdErr(String&& stderr)
 
 void Chain::lastClosed(Chain* chain)
 {
-    if (chain != this)
-        delete chain;
     mComplete();
 }

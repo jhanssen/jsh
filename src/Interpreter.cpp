@@ -119,7 +119,7 @@ static void StdinOn(const v8::FunctionCallbackInfo<v8::Value>& args)
     v8::Isolate* isolate = args.GetIsolate();
     if (args.Length() >= 2) {
         v8::Local<v8::Value> type = args[0];
-        v8::Local<v8::Value> func = args[0];
+        v8::Local<v8::Value> func = args[1];
         if (type->IsString() && func->IsFunction()) {
             InterpreterScopeData* scope = static_cast<InterpreterScopeData*>(isolate->GetData(1));
             assert(scope);

@@ -617,15 +617,16 @@ static void runChain(const Chain::WeakPtr& chain, const Input::WeakPtr& input, b
     ptr->finishedStdErr().connect<EventLoop::Move>(std::bind([](String&& str) {
                 fprintf(stderr, "%s", str.constData());
             }, std::placeholders::_1));
-    ptr->complete().connect([input, &ptr, notifyInput]() mutable {
-            if (notifyInput) {
-                if (Input::SharedPtr in = input.lock()) {
-                    in->sendMessage(Input::Resume);
+    ptr->complete().connect([input, ptr, notifyInput]() {
+                if (notifyInput) {
+                    if (Input::SharedPtr in = input.lock()) {
+                        in->sendMessage(Input::Resume);
+                    }
                 }
-            }
-            // technically not needed I suppose but looks nicer
-            ptr.reset();
-        });
+
+                // Important, if the lambda is not destroyed then the Chain::SharedPtr will be held forever
+                ptr->complete().disconnect();
+            });
     ptr->finalize();
 }
 
