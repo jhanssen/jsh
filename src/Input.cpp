@@ -631,21 +631,28 @@ bool Input::tokensAsJavaScript(List<Shell::Token>::const_iterator& token, const 
     while (token != end) {
         switch (token->type) {
         case Shell::Token::Command:
-        case Shell::Token::Javascript:
             out += token->raw;
             break;
         case Shell::Token::Operator:
             if (token->string == ";") {
+                out += ';';
                 return true;
             }
+            // fall through
+        case Shell::Token::Javascript:
             out += token->string;
             break;
         case Shell::Token::Pipe:
+            out += ';';
             return true;
         }
         ++token;
     }
-    return !out.isEmpty();
+    if (!out.isEmpty()) {
+        out += ';';
+        return true;
+    }
+    return false;
 }
 
 void Input::processTokens(const List<Shell::Token>& tokens, const Input::WeakPtr& input)
