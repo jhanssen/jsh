@@ -11,7 +11,7 @@ public:
     typedef std::shared_ptr<Chain> SharedPtr;
     typedef std::weak_ptr<Chain> WeakPtr;
 
-    Chain() : mErrToOut(false), mNext(0) { }
+    Chain() : mIsComplete(false), mPrevComplete(false), mErrToOut(false), mNext(0) { }
     virtual ~Chain() { delete mNext; }
 
     void setStdErrToStdOut(bool errToOut) { mErrToOut = true; }
@@ -30,10 +30,13 @@ protected:
 
 protected:
     virtual void init(Chain* previous) = 0;
-    virtual void notifyIsFirst() { }
+    virtual void notifyIsFirst() { mPrevComplete = true; }
     virtual void exec() { }
 
     bool errIsOut() const { return mErrToOut; }
+
+protected:
+    bool mIsComplete, mPrevComplete;
 
 private:
     void lastStdOut(String&& stdout);

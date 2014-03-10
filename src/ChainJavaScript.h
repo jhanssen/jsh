@@ -18,7 +18,7 @@ public:
 
 protected:
     virtual void init(Chain* previous);
-    virtual void notifyIsFirst() { mScope->notify(Interpreter::InterpreterScope::StdInClosed); }
+    virtual void notifyIsFirst() { Chain::notifyIsFirst(); mScope->notify(Interpreter::InterpreterScope::StdInClosed); }
     virtual void exec() { return mScope->exec(); }
 
 private:

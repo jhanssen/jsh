@@ -36,7 +36,10 @@ void ChainJavaScript::jsStderr(String&& data)
 
 void ChainJavaScript::jsClosed()
 {
-    closed()(this);
+    if (mPrevComplete)
+        closed()(this);
+    else
+        mIsComplete = true;
 }
 
 void ChainJavaScript::previousStdout(String&& stdout)
@@ -54,4 +57,9 @@ void ChainJavaScript::previousClosed(Chain* chain)
     assert(chain != this);
     (void)chain;
     mScope->notify(Interpreter::InterpreterScope::StdInClosed);
+
+    if (mIsComplete)
+        closed()(this);
+    else
+        mPrevComplete = true;
 }

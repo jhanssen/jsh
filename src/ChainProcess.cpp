@@ -37,7 +37,10 @@ void ChainProcess::processStderr(Process*)
 
 void ChainProcess::processFinished(Process*)
 {
-    closed()(this);
+    if (mPrevComplete)
+        closed()(this);
+    else
+        mIsComplete = true;
 }
 
 void ChainProcess::previousStdout(String&& stdout)
@@ -55,4 +58,9 @@ void ChainProcess::previousClosed(Chain* chain)
     assert(chain != this);
     (void)chain;
     Process::closeStdIn();
+
+    if (mIsComplete)
+        closed()(this);
+    else
+        mPrevComplete = true;
 }
