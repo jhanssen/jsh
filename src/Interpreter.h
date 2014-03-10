@@ -39,8 +39,8 @@ public:
         };
         void notify(NotifyType type, const String& data = String());
 
-        Signal<std::function<void(String&&)> >& stdout() { return mStdin; }
-        Signal<std::function<void(String&&)> >& stderr() { return mStdout; }
+        Signal<std::function<void(String&&)> >& stdout() { return mStdout; }
+        Signal<std::function<void(String&&)> >& stderr() { return mStderr; }
         Signal<std::function<void()> >& closed() { return mClosed; }
 
         bool parse();
@@ -53,7 +53,7 @@ public:
         InterpreterScope(InterpreterScope&& other) = delete;
         InterpreterScope& operator=(InterpreterScope&& other) = delete;
 
-        Signal<std::function<void(String&&)> > mStdin, mStdout;
+        Signal<std::function<void(String&&)> > mStdout, mStderr;
         Signal<std::function<void()> > mClosed;
 
     private:

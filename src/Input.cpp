@@ -633,6 +633,7 @@ static void runChain(const Chain::WeakPtr& chain, const Input::WeakPtr& input, b
 void Input::processTokens(const List<Shell::Token>& tokens, const Input::WeakPtr& input)
 {
     Chain::SharedPtr chain;
+    Chain* cur = 0;
     auto token = tokens.cbegin();
     const auto end = tokens.cend();
     while (token != end) {
@@ -640,10 +641,13 @@ void Input::processTokens(const List<Shell::Token>& tokens, const Input::WeakPtr
         case Shell::Token::Command: {
             ChainProcess* proc = new ChainProcess;
             if (proc->start(token->string, token->args)) {
-                if (!chain)
+                if (!cur) {
+                    cur = proc;
                     chain.reset(proc);
-                else
-                    chain->chain(proc);
+                } else {
+                    cur->chain(proc);
+                    cur = proc;
+                }
             } else {
                 printf("Invalid command: %s\n", token->string.constData());
                 chain.reset();
@@ -660,10 +664,12 @@ void Input::processTokens(const List<Shell::Token>& tokens, const Input::WeakPtr
                 Interpreter::InterpreterScope::SharedPtr scope = interpreter->createScope(token->string.mid(1, token->string.size() - 2));
                 ChainJavaScript* js = new ChainJavaScript(scope);
                 if (js->parse()) {
-                    if (!chain) {
+                    if (!cur) {
+                        cur = js;
                         chain.reset(js);
                     } else {
-                        chain->chain(js);
+                        cur->chain(js);
+                        cur = js;
                     }
                 } else {
                     chain.reset();
