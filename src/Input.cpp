@@ -146,7 +146,9 @@ int Input::processFiledescriptors(int mode, wchar_t* ch)
         FD_SET(STDIN_FILENO, &rset);
         r = ::select(max + 1, &rset, 0, 0, 0);
         if (r <= 0) {
-            fprintf(stderr, "Select returned <= 0\n");
+            if (r == -1 && errno == EINTR)
+                continue;
+            fprintf(stderr, "Select returned %d (%d %s)\n", r, errno, strerror(errno));
             return -1;
         }
         if (FD_ISSET(readStdout, &rset)) {
