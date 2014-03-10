@@ -16,8 +16,8 @@ public:
     typedef std::shared_ptr<Input> SharedPtr;
     typedef std::weak_ptr<Input> WeakPtr;
 
-    Input(Shell* shell, int argc, char** argv)
-        : mShell(shell), mArgc(argc), mArgv(argv), mEl(0), mIsUtf8(false), mState(Normal)
+    Input(int argc, char** argv)
+        : mArgc(argc), mArgv(argv), mEl(0), mIsUtf8(false), mState(Normal)
     {
     }
 
@@ -40,13 +40,13 @@ private:
     bool expandEnvironment(String &string, String &err) const;
     void process(const List<Shell::Token> &tokens);
     void handleMessage(Message msg);
-    String env(const String &var) const { return mEnviron.value(var); }
     enum CompletionResult {
         Completion_Refresh,
         Completion_Redisplay,
         Completion_Error
     };
     CompletionResult complete(const String &line, int cursor, String &insert);
+    bool tokensAsJavaScript(List<Shell::Token>::const_iterator& token, const List<Shell::Token>::const_iterator& end, String& out);
 
     static void addPrev(List<Shell::Token> &tokens, const char *&last, const char *str, unsigned int flags);
     static void addArg(List<Shell::Token> &tokens, const char *&last, const char *str, unsigned int flags);
@@ -64,11 +64,9 @@ protected:
     virtual void run();
 
 private:
-    Shell* mShell;
     int mArgc;
     char** mArgv;
     EditLine* mEl;
-    Hash<String, String> mEnviron;
     String mBuffer;
     int mMsgPipe[2];
     int mStdoutPipe[2];

@@ -5,26 +5,37 @@
 #include "Util.h"
 #include <rct/EventLoop.h>
 
-Interpreter::SharedPtr Shell::sInterpreter;
+extern char **environ;
+
+Shell* Shell::sInstance;
 
 int Shell::exec()
 {
+    for (int i=0; environ[i]; ++i) {
+        char *eq = strchr(environ[i], '=');
+        if (eq) {
+            mEnviron[String(environ[i], eq)] = eq + 1;
+        } else {
+            mEnviron[environ[i]] = String();
+        }
+    }
+
     mEventLoop = std::make_shared<EventLoop>();
     mEventLoop->init(EventLoop::MainEventLoop);
 
-    mInput = std::make_shared<Input>(this, mArgc, mArgv);
+    mInput = std::make_shared<Input>(mArgc, mArgv);
     mInput->start();
 
     const Path home = util::homeDirectory();
     const Path rcFile = home + "/.jshrc.js";
 
-    sInterpreter = std::make_shared<Interpreter>();
-    sInterpreter->load(rcFile);
+    mInterpreter = std::make_shared<Interpreter>();
+    mInterpreter->load(rcFile);
 
     mEventLoop->exec();
     mInput->join();
 
-    sInterpreter.reset();
+    mInterpreter.reset();
 
     return 0;
 }

@@ -26,8 +26,6 @@
 #include <thread>
 #include <condition_variable>
 
-extern char **environ;
-
 static std::atomic<int> gotsig;
 static bool continuation = false;
 
@@ -283,14 +281,6 @@ void Input::run()
     initPipe(mStdoutPipe);
     initPipe(mMsgPipe);
 
-    for (int i=0; environ[i]; ++i) {
-        char *eq = strchr(environ[i], '=');
-        if (eq) {
-            mEnviron[String(environ[i], eq)] = eq + 1;
-        } else {
-            mEnviron[environ[i]] = String();
-        }
-    }
     (void)signal(SIGINT,  sig);
     (void)signal(SIGQUIT, sig);
     (void)signal(SIGHUP,  sig);
@@ -634,8 +624,34 @@ static void runChain(const Chain::WeakPtr& chain, const Input::WeakPtr& input, b
     ptr->finalize();
 }
 
+bool Input::tokensAsJavaScript(List<Shell::Token>::const_iterator& token, const List<Shell::Token>::const_iterator& end, String& out)
+{
+    while (token != end) {
+        switch (token->type) {
+        case Shell::Token::Command:
+        case Shell::Token::Javascript:
+            out += token->raw;
+            break;
+        case Shell::Token::Operator:
+            if (token->string == ";") {
+                --token;
+                return true;
+            }
+            out += token->string;
+            break;
+        case Shell::Token::Pipe:
+            --token;
+            return true;
+        }
+        ++token;
+    }
+    return !out.isEmpty();
+}
+
 void Input::processTokens(const List<Shell::Token>& tokens, const Input::WeakPtr& input)
 {
+    const String path = Shell::instance()->environment()["PATH"];
+
     Chain::SharedPtr chain;
     Chain* cur = 0;
     auto token = tokens.cbegin();
@@ -643,26 +659,59 @@ void Input::processTokens(const List<Shell::Token>& tokens, const Input::WeakPtr
     while (token != end) {
         switch (token->type) {
         case Shell::Token::Command: {
-            ChainProcess* proc = new ChainProcess;
-            if (proc->start(token->string, token->args)) {
-                if (!cur) {
-                    cur = proc;
-                    chain.reset(proc);
-                } else {
-                    cur->chain(proc);
-                    cur = proc;
+            // see if we can find a command by this name
+            const Path file = util::findFile(path, token->string);
+            ChainProcess* proc = 0;
+            ChainJavaScript* js = 0;
+            if (file.exists()) {
+                proc = new ChainProcess;
+                if (proc->start(file, token->args)) {
+                    if (!cur) {
+                        cur = proc;
+                        chain.reset(proc);
+                    } else {
+                        cur->chain(proc);
+                        cur = proc;
+                    }
                 }
             } else {
-                printf("Invalid command: %s\n", token->string.constData());
+                // give JS a chance
+                const String cmd = token->string;
+                {
+                    Interpreter::SharedPtr interpreter = Shell::instance()->interpreter();
+                    if (interpreter) {
+                        if (Input::SharedPtr in = input.lock()) {
+                            String jsscript;
+                            if (in->tokensAsJavaScript(token, end, jsscript)) {
+                                //printf("trying js: %s\n", jsscript.constData());
+                                Interpreter::InterpreterScope::SharedPtr scope = interpreter->createScope(jsscript);
+                                js = new ChainJavaScript(scope);
+                                if (js->parse()) {
+                                    if (!cur) {
+                                        cur = js;
+                                        chain.reset(js);
+                                    } else {
+                                        cur->chain(js);
+                                        cur = js;
+                                    }
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                printf("Invalid command: %s\n", cmd.constData());
                 chain.reset();
                 delete proc;
+                delete js;
                 // make sure we bail out
                 token = end;
                 continue;
             }
             break; }
         case Shell::Token::Javascript: {
-            Interpreter::SharedPtr interpreter = Shell::interpreter();
+            Interpreter::SharedPtr interpreter = Shell::instance()->interpreter();
             if (interpreter) {
                 assert(token->string.size() >= 2);
                 Interpreter::InterpreterScope::SharedPtr scope = interpreter->createScope(token->string.mid(1, token->string.size() - 2));
@@ -745,6 +794,8 @@ static inline bool environmentVarChar(unsigned char ch)
 
 bool Input::expandEnvironment(String &string, String &err) const
 {
+    Hash<String, String> environ = Shell::instance()->environment();
+
     int escapes = 0;
     for (int i=0; i<string.size() - 1; ++i) {
         switch (string.at(i)) {
@@ -754,7 +805,7 @@ bool Input::expandEnvironment(String &string, String &err) const
                     for (int j=i + 2; j<string.size(); ++j) {
                         if (string.at(j) == '}') {
                             const String env = string.mid(i + 2, j - (i + 2));
-                            const String sub = mEnviron.value(env);
+                            const String sub = environ.value(env);
                             string.replace(i, j - i + 1, sub);
                             // error() << "Got sub" << string.mid(i + 2, j - 2);
                         } else if (environmentVarChar(string.at(j)) == Invalid) {
@@ -769,7 +820,7 @@ bool Input::expandEnvironment(String &string, String &err) const
                     int j=i + 2;
                     while (j<string.size() && environmentVarChar(string.at(j)) != Invalid)
                         ++j;
-                    const String sub = mEnviron.value(string.mid(i + 1, j - 1));
+                    const String sub = environ.value(string.mid(i + 1, j - 1));
                     string.replace(i, j - i + 1, sub);
                 } else {
                     err = "Bad substitution";
@@ -790,17 +841,18 @@ bool Input::expandEnvironment(String &string, String &err) const
     }
 }
 
-static Value jsCall(Shell* shell, const String &object, const String &function,
+static Value jsCall(const String &object, const String &function,
                     const List<Value> &args, bool *ok = 0)
 {
+    Shell* shell = Shell::instance();
     return shell->runAndWait<Value>([&]() -> Value {
             return shell->interpreter()->call(object, function, args, ok);
         });
 }
 
-static Value jsCall(Shell* shell, const String &function, const List<Value> &args, bool *ok = 0)
+static Value jsCall(const String &function, const List<Value> &args, bool *ok = 0)
 {
-    return jsCall(shell, String(), function, args, ok);
+    return jsCall(String(), function, args, ok);
 }
 
 // cursor is the unicode character position, line is in utf8
@@ -827,7 +879,7 @@ Input::CompletionResult Input::complete(const String &line, int cursor, String &
     args.append(toks);
     bool ok;
     //const Value value = mInterpreter->call("complete", args, &ok);
-    const Value value = jsCall(mShell, "complete", args, &ok);
+    const Value value = jsCall("complete", args, &ok);
     if (!ok)
         return Completion_Error;
     const String result = value.value<String>("result");

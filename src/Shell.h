@@ -8,6 +8,7 @@
 #include <mutex>
 #include <memory>
 #include <condition_variable>
+#include <assert.h>
 
 class Interpreter;
 class Input;
@@ -17,14 +18,21 @@ public:
     Shell(int argc, char** argv)
         : mArgc(argc), mArgv(argv)
     {
+        assert(!sInstance);
+        sInstance = this;
     }
+    ~Shell() { assert(sInstance == this); sInstance = 0; }
 
     int exec();
 
     template<typename T>
     T runAndWait(std::function<T()>&& func);
 
-    static std::shared_ptr<Interpreter> interpreter() { return sInterpreter; }
+    std::shared_ptr<Interpreter> interpreter() { return mInterpreter; }
+
+    static Shell* instance() { return sInstance; }
+
+    Hash<String, String> environment() { std::unique_lock<std::mutex>(mMutex); return mEnviron; }
 
 private:
     struct Token {
@@ -38,13 +46,19 @@ private:
 
         String string;
         List<String> args;
+        String raw;
     };
+
+    std::mutex mMutex;
 
     int mArgc;
     char** mArgv;
     std::shared_ptr<Input> mInput;
     EventLoop::SharedPtr mEventLoop;
-    static std::shared_ptr<Interpreter> sInterpreter;
+    Hash<String, String> mEnviron;
+    std::shared_ptr<Interpreter> mInterpreter;
+
+    static Shell* sInstance;
 
 private:
     friend class Input;
