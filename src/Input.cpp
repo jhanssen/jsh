@@ -680,22 +680,20 @@ void Input::processTokens(const List<Shell::Token>& tokens, const Input::WeakPtr
                 {
                     Interpreter::SharedPtr interpreter = Shell::instance()->interpreter();
                     if (interpreter) {
-                        if (Input::SharedPtr in = input.lock()) {
-                            String jsscript;
-                            if (in->tokensAsJavaScript(token, end, jsscript)) {
-                                //printf("trying js: %s\n", jsscript.constData());
-                                Interpreter::InterpreterScope::SharedPtr scope = interpreter->createScope(jsscript);
-                                js = new ChainJavaScript(scope);
-                                if (js->parse()) {
-                                    if (!cur) {
-                                        cur = js;
-                                        chain.reset(js);
-                                    } else {
-                                        cur->chain(js);
-                                        cur = js;
-                                    }
-                                    continue;
+                        String jsscript;
+                        if (tokensAsJavaScript(token, end, jsscript)) {
+                            //printf("trying js: %s\n", jsscript.constData());
+                            Interpreter::InterpreterScope::SharedPtr scope = interpreter->createScope(jsscript);
+                            js = new ChainJavaScript(scope);
+                            if (js->parse()) {
+                                if (!cur) {
+                                    cur = js;
+                                    chain.reset(js);
+                                } else {
+                                    cur->chain(js);
+                                    cur = js;
                                 }
+                                continue;
                             }
                         }
                     }

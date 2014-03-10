@@ -47,7 +47,7 @@ public:
     String source, name;
 };
 
-static inline String Print(const v8::FunctionCallbackInfo<v8::Value>& args, bool newline = false)
+static inline String print(const v8::FunctionCallbackInfo<v8::Value>& args, bool newline = false)
 {
     bool first = true;
     v8::Isolate* isolate = args.GetIsolate();
@@ -75,17 +75,17 @@ static inline String Print(const v8::FunctionCallbackInfo<v8::Value>& args, bool
     return std::move(out);
 }
 
-static void PrintStdout(const v8::FunctionCallbackInfo<v8::Value>& args)
+static void printStdout(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
-    const String& out = Print(args);
+    const String& out = print(args);
     if (!out.isEmpty()) {
         fprintf(stdout, "%s\n", out.constData());
     }
 }
 
-static void PrintStderr(const v8::FunctionCallbackInfo<v8::Value>& args)
+static void printStderr(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
-    const String& err = Print(args);
+    const String& err = print(args);
     if (!err.isEmpty()) {
         fprintf(stdout, "%s\n", err.constData());
     }
@@ -102,9 +102,9 @@ static inline InterpreterScopeData* scopeDataFromObject(v8::Isolate* isolate, co
     return 0;
 }
 
-static void EmitStdout(const v8::FunctionCallbackInfo<v8::Value>& args)
+static void emitStdout(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
-    String out = Print(args, true);
+    String out = print(args, true);
     if (!out.isEmpty()) {
         v8::Isolate* isolate = args.GetIsolate();
         InterpreterScopeData* scope = scopeDataFromObject(isolate, args.Holder());
@@ -113,9 +113,9 @@ static void EmitStdout(const v8::FunctionCallbackInfo<v8::Value>& args)
     }
 }
 
-static void EmitStderr(const v8::FunctionCallbackInfo<v8::Value>& args)
+static void emitStderr(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
-    String err = Print(args, true);
+    String err = print(args, true);
     if (!err.isEmpty()) {
         fprintf(stdout, "%s\n", err.constData());
         v8::Isolate* isolate = args.GetIsolate();
@@ -125,7 +125,7 @@ static void EmitStderr(const v8::FunctionCallbackInfo<v8::Value>& args)
     }
 }
 
-static void StdinOn(const v8::FunctionCallbackInfo<v8::Value>& args)
+static void stdinOn(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
     v8::Isolate* isolate = args.GetIsolate();
     if (args.Length() >= 2) {
@@ -207,7 +207,7 @@ v8::Handle<v8::Value> InterpreterData::loadNativeModule(v8::Isolate* isolate, co
     return handle_scope.Escape(v8::Local<v8::Value>());
 }
 
-static void Require(const v8::FunctionCallbackInfo<v8::Value>& args)
+static void require(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
     v8::Isolate* isolate = args.GetIsolate();
     InterpreterData* interpreter = static_cast<InterpreterData*>(isolate->GetData(0));
@@ -233,22 +233,8 @@ static v8::Handle<v8::Context> createContext(v8::Isolate* isolate)
     // Create a template for the global object.
     v8::Handle<v8::ObjectTemplate> global = v8::ObjectTemplate::New(isolate);
     // Bind the global 'print' function to the C++ Print callback.
-    global->Set(v8::String::NewFromUtf8(isolate, "print"),
-                v8::FunctionTemplate::New(isolate, PrintStdout));
     global->Set(v8::String::NewFromUtf8(isolate, "require"),
-                v8::FunctionTemplate::New(isolate, Require));
-    // Bind the global 'read' function to the C++ Read callback.
-    // global->Set(v8::String::NewFromUtf8(isolate, "read"),
-    //             v8::FunctionTemplate::New(isolate, Read));
-    // Bind the global 'load' function to the C++ Load callback.
-    // global->Set(v8::String::NewFromUtf8(isolate, "load"),
-    //             v8::FunctionTemplate::New(isolate, Load));
-    // Bind the 'quit' function
-    // global->Set(v8::String::NewFromUtf8(isolate, "quit"),
-    //             v8::FunctionTemplate::New(isolate, Quit));
-    // Bind the 'version' function
-    // global->Set(v8::String::NewFromUtf8(isolate, "version"),
-    //             v8::FunctionTemplate::New(isolate, Version));
+                v8::FunctionTemplate::New(isolate, require));
 
     return v8::Context::New(isolate, NULL, global);
 }
@@ -529,9 +515,6 @@ InterpreterScopeData::~InterpreterScopeData()
     v8::Local<v8::Context> context = v8::Local<v8::Context>::New(isolate, interpreter->mData->context);
     v8::Context::Scope contextScope(context);
     v8::Local<v8::Object> global = context->Global();
-    // global->Set(v8::String::NewFromUtf8(isolate, "stdout"), v8::Undefined(isolate));
-    // global->Set(v8::String::NewFromUtf8(isolate, "stderr"), v8::Undefined(isolate));
-    // global->Set(v8::String::NewFromUtf8(isolate, "stdin"), v8::Undefined(isolate));
 
     for (auto& func : dataListeners) {
         delete func;
@@ -551,19 +534,6 @@ bool InterpreterScopeData::parse(const String& source, const String& name)
     v8::Context::Scope contextScope(context);
 
     v8::Local<v8::Object> global = context->Global();
-
-    // v8::Local<v8::Function> stdoutTemplate = v8::Function::New(isolate, EmitStdout);
-    // v8::Local<v8::Function> stderrTemplate = v8::Function::New(isolate, EmitStderr);
-    // global->Set(v8::String::NewFromUtf8(isolate, "stdout"), stdoutTemplate);
-    // global->Set(v8::String::NewFromUtf8(isolate, "stderr"), stderrTemplate);
-    // stdout.Reset(isolate, stdoutTemplate);
-    // stderr.Reset(isolate, stderrTemplate);
-
-    // v8::Local<v8::Object> stdinTemplate = v8::Object::New(isolate);
-    // v8::Local<v8::Object> stdinOnTemplate = v8::Function::New(isolate, StdinOn);
-    // stdinTemplate->Set(v8::String::NewFromUtf8(isolate, "on"), stdinOnTemplate);
-    // global->Set(v8::String::NewFromUtf8(isolate, "stdin"), stdinTemplate);
-    // stdin.Reset(isolate, stdinTemplate);
 
     const String func = "(function(io) {" + source + "})";
 
@@ -631,13 +601,13 @@ void InterpreterScopeData::exec()
 
         // ### Use an object template for this
         v8::Handle<v8::Object> stdin = v8::Object::New(isolate);
-        v8::Handle<v8::Function> on = v8::Function::New(isolate, StdinOn);
+        v8::Handle<v8::Function> on = v8::Function::New(isolate, stdinOn);
         stdin->SetHiddenValue(v8::String::NewFromUtf8(isolate, "jsh::scope"), scopeData);
         stdin->Set(v8::String::NewFromUtf8(isolate, "on"), on);
         io->Set(v8::String::NewFromUtf8(isolate, "stdin"), stdin);
-        v8::Handle<v8::Function> stdout = v8::Function::New(isolate, EmitStdout);
+        v8::Handle<v8::Function> stdout = v8::Function::New(isolate, emitStdout);
         io->Set(v8::String::NewFromUtf8(isolate, "stdout"), stdout);
-        v8::Handle<v8::Function> stderr = v8::Function::New(isolate, EmitStderr);
+        v8::Handle<v8::Function> stderr = v8::Function::New(isolate, emitStderr);
         io->Set(v8::String::NewFromUtf8(isolate, "stderr"), stderr);
 
         v8::Handle<v8::Value> arg = io;

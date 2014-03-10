@@ -46,13 +46,13 @@ private:
         Completion_Error
     };
     CompletionResult complete(const String &line, int cursor, String &insert);
-    bool tokensAsJavaScript(List<Shell::Token>::const_iterator& token, const List<Shell::Token>::const_iterator& end, String& out);
 
     static void addPrev(List<Shell::Token> &tokens, const char *&last, const char *str, unsigned int flags);
     static void addArg(List<Shell::Token> &tokens, const char *&last, const char *str, unsigned int flags);
     static unsigned char elComplete(EditLine *el, int);
     static int getChar(EditLine *el, wchar_t *ch);
     static void processTokens(const List<Shell::Token>& tokens, const Input::WeakPtr& input);
+    static bool tokensAsJavaScript(List<Shell::Token>::const_iterator& token, const List<Shell::Token>::const_iterator& end, String& out);
     bool isUtf8() const { return mIsUtf8; }
 
     enum ProcessMode {
