@@ -451,8 +451,9 @@ static inline String stripBraces(String&& string)
 
 void Input::addArg(List<Shell::Token> &tokens, const char *&last, const char *str, unsigned int flags)
 {
-    if (last && last < str) {
+    if (last && last <= str) {
         tokens.last().args.append(stripBraces(String(last, str - last + 1)));
+        tokens.last().raw += " " + String(last, str - last + 1);
         if (flags & Tokenize_CollapseWhitespace) {
             eatEscapes(tokens.last().args.last());
             tokens.last().args.last().chomp(' ');
@@ -467,8 +468,9 @@ void Input::addPrev(List<Shell::Token> &tokens, const char *&last, const char *s
         addArg(tokens, last, str, flags);
         return;
     }
-    if (last && last < str) {
+    if (last && last <= str) {
         tokens.append({Shell::Token::Command, stripBraces(String(last, str - last + 1))});
+        tokens.last().raw = String(last, str - last + 1);
         if (flags & Tokenize_CollapseWhitespace) {
             eatEscapes(tokens.last().string);
             tokens.last().string.chomp(' ');
@@ -518,7 +520,7 @@ List<Shell::Token> Input::tokenize(String line, unsigned int flags, String &err)
 
         switch (*str) {
         case '{': {
-            addPrev(tokens, last, str, flags);
+            addPrev(tokens, last, str - 1, flags);
             const char *end = findEndBrace(str + 1);
             if (!end) {
                 err = String::format<128>("Can't find end of curly brace that starts at position %d", str - start);
@@ -541,7 +543,7 @@ List<Shell::Token> Input::tokenize(String line, unsigned int flags, String &err)
             break; }
         case '|':
             if (escapes % 2 == 0) {
-                addPrev(tokens, last, str, flags);
+                addPrev(tokens, last, str - 1, flags);
                 if (str[1] == '|') {
                     tokens.append({Shell::Token::Operator, String(str, 2)});
                     ++str;
@@ -552,7 +554,7 @@ List<Shell::Token> Input::tokenize(String line, unsigned int flags, String &err)
             break;
         case '&':
             if (escapes % 2 == 0) {
-                addPrev(tokens, last, str, flags);
+                addPrev(tokens, last, str - 1, flags);
                 if (str[1] == '&') {
                     tokens.append({Shell::Token::Operator, String(str, 2)});
                     ++str;
@@ -568,13 +570,13 @@ List<Shell::Token> Input::tokenize(String line, unsigned int flags, String &err)
         case ')':
         case '!':
             if (escapes % 2 == 0) {
-                addPrev(tokens, last, str, flags);
+                addPrev(tokens, last, str - 1, flags);
                 tokens.append({Shell::Token::Operator, String(str, 1)});
             }
             break;
         case ' ':
             if (escapes % 2 == 0) {
-                addPrev(tokens, last, str, flags);
+                addPrev(tokens, last, str - 1, flags);
             }
             break;
         default:
@@ -583,13 +585,15 @@ List<Shell::Token> Input::tokenize(String line, unsigned int flags, String &err)
         escapes = 0;
         ++str;
     }
-    if (last && last + 1 < str) {
+    if (last && last + 1 <= str) {
         if (!tokens.isEmpty() && tokens.last().type == Shell::Token::Command) {
             tokens.last().args.append(stripBraces(String(last, str - last)));
-            if (flags & Tokenize_CollapseWhitespace)
+            tokens.last().raw += " " + String(last, str - last + 1);
+             if (flags & Tokenize_CollapseWhitespace)
                 eatEscapes(tokens.last().args.last());
         } else {
             tokens.append({Shell::Token::Command, stripBraces(String(last, str - last))});
+            tokens.last().raw = String(last, str - last);
             if (flags & Tokenize_CollapseWhitespace)
                 eatEscapes(tokens.last().string);
         }
