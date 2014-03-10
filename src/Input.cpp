@@ -634,13 +634,11 @@ bool Input::tokensAsJavaScript(List<Shell::Token>::const_iterator& token, const 
             break;
         case Shell::Token::Operator:
             if (token->string == ";") {
-                --token;
                 return true;
             }
             out += token->string;
             break;
         case Shell::Token::Pipe:
-            --token;
             return true;
         }
         ++token;
@@ -657,6 +655,7 @@ void Input::processTokens(const List<Shell::Token>& tokens, const Input::WeakPtr
     auto token = tokens.cbegin();
     const auto end = tokens.cend();
     while (token != end) {
+        //printf("token %s\n", Shell::Token::typeName(token->type));
         switch (token->type) {
         case Shell::Token::Command: {
             // see if we can find a command by this name
@@ -664,6 +663,7 @@ void Input::processTokens(const List<Shell::Token>& tokens, const Input::WeakPtr
             ChainProcess* proc = 0;
             ChainJavaScript* js = 0;
             if (file.exists()) {
+                //error() << "running command" << file << token->args;
                 proc = new ChainProcess;
                 if (proc->start(file, token->args)) {
                     if (!cur) {
