@@ -3,6 +3,7 @@
 #include "ChainProcess.h"
 #include "Input.h"
 #include "Util.h"
+#include "NodeConnection.h"
 #include <rct/EventLoop.h>
 
 extern char **environ;
@@ -28,9 +29,10 @@ int Shell::exec()
 
     const Path home = util::homeDirectory();
     const Path rcFile = home + "/.jshrc.js";
+    const Path socketFile = home + "/.jsh-socket";
 
     mInterpreter = std::make_shared<Interpreter>();
-    mInterpreter->load(rcFile);
+    mInterpreter->load(rcFile, socketFile);
 
     mEventLoop->exec();
     mInput->join();

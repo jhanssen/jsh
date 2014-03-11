@@ -17,6 +17,7 @@ set(CLIENT_SOURCES
   ChainProcess.cpp
   Input.cpp
   Interpreter.cpp
+  NodeConnection.cpp
   Shell.cpp
   Util.cpp
   main.cpp

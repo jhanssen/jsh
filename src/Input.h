@@ -4,6 +4,8 @@
 #include "Shell.h"
 #include <rct/Thread.h>
 #include <rct/String.h>
+#include <rct/SocketClient.h>
+#include <rct/Timer.h>
 #include <string>
 #include <memory>
 

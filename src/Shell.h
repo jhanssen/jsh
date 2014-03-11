@@ -12,6 +12,7 @@
 
 class Interpreter;
 class Input;
+class NodeConnection;
 class Shell
 {
 public:
@@ -33,6 +34,9 @@ public:
     static Shell* instance() { return sInstance; }
 
     Hash<String, String> environment() { std::unique_lock<std::mutex>(mMutex); return mEnviron; }
+    String environment(const String &env) { std::unique_lock<std::mutex>(mMutex); return mEnviron.value(env);; }
+
+    std::shared_ptr<NodeConnection> nodeConnection() { return mNodeConnection; }
 
 private:
     struct Token {
@@ -54,6 +58,7 @@ private:
     int mArgc;
     char** mArgv;
     std::shared_ptr<Input> mInput;
+    std::shared_ptr<NodeConnection> mNodeConnection;
     EventLoop::SharedPtr mEventLoop;
     Hash<String, String> mEnviron;
     std::shared_ptr<Interpreter> mInterpreter;

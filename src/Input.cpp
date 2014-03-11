@@ -161,7 +161,7 @@ int Input::processFiledescriptors(int mode, wchar_t* ch)
                     if (!r || (r == -1 && errno != EINTR && errno != EAGAIN)) {
                         ::close(readStdout);
                         readStdout = -1;
-                        fprintf(stderr, "Read from stdout pipe returned %d (%d)\n", r, errno);
+                        fprintf (stderr, "Read from stdout pipe returned %d (%d)\n", r, errno);
                         return -1;
                     }
                     if (r == -1 && errno == EAGAIN) {
@@ -655,9 +655,24 @@ bool Input::tokensAsJavaScript(List<Shell::Token>::const_iterator& token, const 
     return false;
 }
 
+static inline ChainJavaScript *createJS(const String &script)
+{
+    if (Interpreter::SharedPtr interpreter = Shell::instance()->interpreter()) {
+        //printf("trying js: %s\n", jsscript.constData());
+        Interpreter::InterpreterScope::SharedPtr scope = interpreter->createScope(script);
+        ChainJavaScript *js = new ChainJavaScript(scope);
+        if (js->parse()) {
+            return js;
+        } else {
+            delete js;
+        }
+    }
+    return 0;
+}
+
 void Input::processTokens(const List<Shell::Token>& tokens, const Input::WeakPtr& input)
 {
-    const String path = Shell::instance()->environment()["PATH"];
+    const String path = Shell::instance()->environment("PATH");
 
     Chain::SharedPtr chain;
     Chain* cur = 0;
@@ -665,91 +680,57 @@ void Input::processTokens(const List<Shell::Token>& tokens, const Input::WeakPtr
     const auto end = tokens.cend();
     while (token != end) {
         //printf("token %s\n", Shell::Token::typeName(token->type));
+        Chain *c = 0;
+        bool error = false;
+
         switch (token->type) {
         case Shell::Token::Command: {
-            // see if we can find a command by this name
-            const Path file = util::findFile(path, token->string);
-            ChainProcess* proc = 0;
-            ChainJavaScript* js = 0;
-            if (file.exists()) {
-                //error() << "running command" << file << token->args;
-                proc = new ChainProcess;
-                if (proc->start(file, token->args)) {
-                    if (!cur) {
-                        cur = proc;
-                        chain.reset(proc);
-                    } else {
-                        cur->chain(proc);
-                        cur = proc;
-                    }
-                }
-            } else {
-                // give JS a chance
-                const String cmd = token->string;
-                {
-                    Interpreter::SharedPtr interpreter = Shell::instance()->interpreter();
-                    if (interpreter) {
-                        String jsscript;
-                        if (tokensAsJavaScript(token, end, jsscript)) {
-                            //printf("trying js: %s\n", jsscript.constData());
-                            Interpreter::InterpreterScope::SharedPtr scope = interpreter->createScope(jsscript);
-                            js = new ChainJavaScript(scope);
-                            if (js->parse()) {
-                                if (!cur) {
-                                    cur = js;
-                                    chain.reset(js);
-                                } else {
-                                    cur->chain(js);
-                                    cur = js;
-                                }
-                                continue;
-                            }
-                        }
-                    }
-                }
+            // give JS a chance
+            String jsscript;
+            if (tokensAsJavaScript(token, end, jsscript))
+                c = createJS(jsscript);
 
-                printf("Invalid command: %s\n", cmd.constData());
-                chain.reset();
-                delete proc;
-                delete js;
-                // make sure we bail out
-                token = end;
-                continue;
-            }
-            break; }
-        case Shell::Token::Javascript: {
-            Interpreter::SharedPtr interpreter = Shell::instance()->interpreter();
-            if (interpreter) {
-                assert(token->string.size() >= 2);
-                Interpreter::InterpreterScope::SharedPtr scope = interpreter->createScope(token->string.mid(1, token->string.size() - 2));
-                ChainJavaScript* js = new ChainJavaScript(scope);
-                if (js->parse()) {
-                    if (!cur) {
-                        cur = js;
-                        chain.reset(js);
-                    } else {
-                        cur->chain(js);
-                        cur = js;
-                    }
+            if (!c) {
+                // see if we can find a command by this name
+                const Path file = util::findFile(path, token->string);
+                //error() << "running command" << file << token->args;
+                ChainProcess *proc = new ChainProcess;
+                if (proc->start(file, token->args)) {
+                    c = proc;
                 } else {
-                    chain.reset();
-                    delete js;
-                    // make sure we bail out
-                    token = end;
-                    continue;
+                    delete proc;
                 }
-            } else {
-                printf("No intepreter available\n");
+            }
+            if (!c) {
+                const String cmd = token->string;
+                printf("Invalid command: %s\n", cmd.constData());
+                error = true;
             }
             break; }
+        case Shell::Token::Javascript:
+            c = createJS(token->string); // why remote the {}
+            break;
         case Shell::Token::Operator:
             ++token;
             if (token != end) {
                 chain->complete().connect(std::bind(&Input::processTokens, std::move(List<Shell::Token>(token, end)), std::move(input)));
             }
             runChain(chain, input, token == end);
+            chain.reset();
             return;
         case Shell::Token::Pipe:
+            break;
+        }
+        if (c) {
+            if (!cur) {
+                cur = c;
+                chain.reset(c);
+            } else {
+                cur->chain(c);
+                cur = c;
+            }
+        } else if (error) {
+            chain.reset();
             break;
         }
         ++token;
@@ -762,7 +743,7 @@ void Input::processTokens(const List<Shell::Token>& tokens, const Input::WeakPtr
             in->sendMessage(Input::Resume);
         }
     }
- }
+}
 
 void Input::process(const List<Shell::Token> &tokens)
 {
