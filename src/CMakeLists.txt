@@ -16,11 +16,11 @@ set(CLIENT_SOURCES
   ChainJavaScript.cpp
   ChainProcess.cpp
   Input.cpp
-  Interpreter.cpp
-  NodeConnection.cpp
+  NodeJS.cpp
   Shell.cpp
   Util.cpp
   main.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/../3rdparty/duktape-0.9.0/src/duktape.c
   )
 
 include_directories(
@@ -30,6 +30,7 @@ include_directories(
   ${CMAKE_CURRENT_LIST_DIR}/../3rdparty/libedit/src
   ${CMAKE_CURRENT_LIST_DIR}/../3rdparty/utf8/source
   ${CMAKE_CURRENT_LIST_DIR}/../3rdparty/v8/include
+  ${CMAKE_CURRENT_LIST_DIR}/../3rdparty/duktape-0.9.0/src/
   )
 
 link_directories(

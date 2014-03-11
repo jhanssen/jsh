@@ -2,12 +2,9 @@
 #include <stdio.h>
 #include <assert.h>
 
-ChainJavaScript::ChainJavaScript(Interpreter::InterpreterScope::SharedPtr scope)
-    : mScope(std::move(scope))
+ChainJavaScript::ChainJavaScript(const String &js)
+    : mScript(js)
 {
-    mScope->stdout().connect(std::bind(&ChainJavaScript::jsStdout, this, std::placeholders::_1));
-    mScope->stderr().connect(std::bind(&ChainJavaScript::jsStderr, this, std::placeholders::_1));
-    mScope->closed().connect(std::bind(&ChainJavaScript::jsClosed, this));
 }
 
 ChainJavaScript::~ChainJavaScript()
@@ -44,7 +41,7 @@ void ChainJavaScript::jsClosed()
 
 void ChainJavaScript::previousStdout(String&& stdout)
 {
-    mScope->notify(Interpreter::InterpreterScope::StdInData, stdout);
+    // mScope->notify(NodeJS::Scope::StdInData, stdout);
 }
 
 void ChainJavaScript::previousStderr(String&& stderr)
@@ -54,12 +51,22 @@ void ChainJavaScript::previousStderr(String&& stderr)
 
 void ChainJavaScript::previousClosed(Chain* chain)
 {
-    assert(chain != this);
-    (void)chain;
-    mScope->notify(Interpreter::InterpreterScope::StdInClosed);
+    // assert(chain != this);
+    // (void)chain;
+    // mScope->notify(NodeJS::Scope::StdInClosed);
 
-    if (mIsComplete)
-        closed()(this);
-    else
-        mPrevComplete = true;
+    // if (mIsComplete)
+    //     closed()(this);
+    // else
+    //     mPrevComplete = true;
+}
+
+void ChainJavaScript::notifyIsFirst()
+{
+    Chain::notifyIsFirst();
+    //mScope->notify(NodeJS::Scope::StdInClosed);//
+}
+void ChainJavaScript::exec()
+{
+
 }

@@ -10,9 +10,8 @@
 #include <condition_variable>
 #include <assert.h>
 
-class Interpreter;
+class NodeJS;
 class Input;
-class NodeConnection;
 class Shell
 {
 public:
@@ -29,14 +28,12 @@ public:
     template<typename T>
     T runAndWait(std::function<T()>&& func);
 
-    std::shared_ptr<Interpreter> interpreter() { return mInterpreter; }
+    std::shared_ptr<NodeJS> nodeJS() { return mNodeJS; }
 
     static Shell* instance() { return sInstance; }
 
     Hash<String, String> environment() { std::unique_lock<std::mutex>(mMutex); return mEnviron; }
     String environment(const String &env) { std::unique_lock<std::mutex>(mMutex); return mEnviron.value(env);; }
-
-    std::shared_ptr<NodeConnection> nodeConnection() { return mNodeConnection; }
 
 private:
     struct Token {
@@ -58,10 +55,9 @@ private:
     int mArgc;
     char** mArgv;
     std::shared_ptr<Input> mInput;
-    std::shared_ptr<NodeConnection> mNodeConnection;
     EventLoop::SharedPtr mEventLoop;
     Hash<String, String> mEnviron;
-    std::shared_ptr<Interpreter> mInterpreter;
+    std::shared_ptr<NodeJS> mNodeJS;
 
     static Shell* sInstance;
 

@@ -1,7 +1,7 @@
 #include "Input.h"
 #include "ChainJavaScript.h"
 #include "ChainProcess.h"
-#include "Interpreter.h"
+#include "NodeJS.h"
 #include "Util.h"
 #include "Shell.h"
 #include <rct/EventLoop.h>
@@ -657,14 +657,11 @@ bool Input::tokensAsJavaScript(List<Shell::Token>::const_iterator& token, const 
 
 static inline ChainJavaScript *createJS(const String &script)
 {
-    if (Interpreter::SharedPtr interpreter = Shell::instance()->interpreter()) {
+    if (NodeJS::SharedPtr nodeJS = Shell::instance()->nodeJS()) {
         //printf("trying js: %s\n", jsscript.constData());
-        Interpreter::InterpreterScope::SharedPtr scope = interpreter->createScope(script);
-        ChainJavaScript *js = new ChainJavaScript(scope);
-        if (js->parse()) {
+        if (nodeJS->checkSyntax(script)) {
+            ChainJavaScript *js = new ChainJavaScript(script);
             return js;
-        } else {
-            delete js;
         }
     }
     return 0;
@@ -834,7 +831,7 @@ static Value jsCall(const String &object, const String &function,
 {
     Shell* shell = Shell::instance();
     return shell->runAndWait<Value>([&]() -> Value {
-            return shell->interpreter()->call(object, function, args, ok);
+            return shell->nodeJS()->call(object, function, args, ok);
         });
 }
 
@@ -866,7 +863,7 @@ Input::CompletionResult Input::complete(const String &line, int cursor, String &
     }
     args.append(toks);
     bool ok;
-    //const Value value = mInterpreter->call("complete", args, &ok);
+    //const Value value = mNodeJS->call("complete", args, &ok);
     const Value value = jsCall("complete", args, &ok);
     if (!ok)
         return Completion_Error;

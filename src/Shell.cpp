@@ -1,9 +1,8 @@
 #include "Shell.h"
-#include "Interpreter.h"
+#include "NodeJS.h"
 #include "ChainProcess.h"
 #include "Input.h"
 #include "Util.h"
-#include "NodeConnection.h"
 #include <rct/EventLoop.h>
 
 extern char **environ;
@@ -31,13 +30,11 @@ int Shell::exec()
     const Path rcFile = home + "/.jshrc.js";
     const Path socketFile = home + "/.jsh-socket";
 
-    mInterpreter = std::make_shared<Interpreter>();
-    mInterpreter->load(rcFile, socketFile);
+    mNodeJS = std::make_shared<NodeJS>();
+    mNodeJS->init(rcFile, socketFile);
 
     mEventLoop->exec();
     mInput->join();
-
-    mInterpreter.reset();
 
     return 0;
 }

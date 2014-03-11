@@ -2,7 +2,7 @@
 #define CHAINJAVASCRIPT_H
 
 #include "Chain.h"
-#include "Interpreter.h"
+#include "NodeJS.h"
 #include <rct/Process.h>
 
 class ChainJavaScript : public Chain
@@ -11,15 +11,13 @@ public:
     typedef std::shared_ptr<ChainJavaScript> SharedPtr;
     typedef std::weak_ptr<ChainJavaScript> WeakPtr;
 
-    ChainJavaScript(Interpreter::InterpreterScope::SharedPtr scope);
+    ChainJavaScript(const String &code);
     virtual ~ChainJavaScript();
-
-    bool parse() { return mScope->parse(); }
 
 protected:
     virtual void init(Chain* previous);
-    virtual void notifyIsFirst() { Chain::notifyIsFirst(); mScope->notify(Interpreter::InterpreterScope::StdInClosed); }
-    virtual void exec() { return mScope->exec(); }
+    virtual void notifyIsFirst();
+    virtual void exec();
 
 private:
     void jsStdout(String&& out);
@@ -31,7 +29,7 @@ private:
     void previousClosed(Chain* chain);
 
 private:
-    Interpreter::InterpreterScope::SharedPtr mScope;
+    const String mScript;
 };
 
 #endif
