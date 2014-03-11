@@ -1,6 +1,5 @@
 #include "Input.h"
-#include "ChainJavaScript.h"
-#include "ChainProcess.h"
+#include "Job.h"
 #include "NodeJS.h"
 #include "Util.h"
 #include "Shell.h"
@@ -603,31 +602,10 @@ void Input::handleMessage(Message msg)
     }
 }
 
-static void runChain(const Chain::WeakPtr& chain, const Input::WeakPtr& input, bool notifyInput)
-{
-    Chain::SharedPtr ptr = chain.lock();
-    assert(ptr);
-    ptr->finishedStdOut().connect<EventLoop::Move>(std::bind([](String&& str) {
-                fprintf(stdout, "%s", str.constData());
-            }, std::placeholders::_1));
-    ptr->finishedStdErr().connect<EventLoop::Move>(std::bind([](String&& str) {
-                fprintf(stderr, "%s", str.constData());
-            }, std::placeholders::_1));
-    ptr->complete().connect([input, ptr, notifyInput]() {
-                if (notifyInput) {
-                    if (Input::SharedPtr in = input.lock()) {
-                        in->sendMessage(Input::Resume);
-                    }
-                }
-
-                // Important, if the lambda is not destroyed then the Chain::SharedPtr will be held forever
-                ptr->complete().disconnect();
-            });
-    ptr->finalize();
-}
-
 bool Input::tokensAsJavaScript(List<Shell::Token>::const_iterator& token, const List<Shell::Token>::const_iterator& end, String& out)
 {
+#warning fixme
+    return false;
     while (token != end) {
         switch (token->type) {
         case Shell::Token::Command:
@@ -655,113 +633,102 @@ bool Input::tokensAsJavaScript(List<Shell::Token>::const_iterator& token, const 
     return false;
 }
 
-static inline ChainJavaScript *createJS(const String &script)
-{
-    if (NodeJS::SharedPtr nodeJS = Shell::instance()->nodeJS()) {
-        //printf("trying js: %s\n", jsscript.constData());
-        if (nodeJS->checkSyntax(script)) {
-            ChainJavaScript *js = new ChainJavaScript(script);
-            return js;
-        }
-    }
-    return 0;
-}
+// static inline ChainJavaScript *createJS(const String &script)
+// {
+//     if (NodeJS::SharedPtr nodeJS = Shell::instance()->nodeJS()) {
+//         //printf("trying js: %s\n", jsscript.constData());
+//         if (nodeJS->checkSyntax(script)) {
+//             ChainJavaScript *js = new ChainJavaScript(script);
+//             return js;
+//         }
+//     }
+//     return 0;
+// }
 
-void Input::processTokens(const List<Shell::Token>& tokens, const Input::WeakPtr& input)
+void Input::processTokens(const List<Shell::Token>& tokens)
 {
     const String path = Shell::instance()->environment("PATH");
 
-    Chain::SharedPtr chain;
-    Chain* cur = 0;
+    Job::SharedPtr job = std::make_shared<Job>(STDOUT_FILENO);
     auto token = tokens.cbegin();
     const auto end = tokens.cend();
     while (token != end) {
+        assert(!token->string.isEmpty());
+
         //printf("token %s\n", Shell::Token::typeName(token->type));
-        Chain *c = 0;
         bool error = false;
 
         switch (token->type) {
         case Shell::Token::Command: {
-            // give JS a chance
-            String jsscript;
-            if (tokensAsJavaScript(token, end, jsscript))
-                c = createJS(jsscript);
+            bool isCommand = false;
+            // If the file explicitly exists, run it
+            if (token->string[0] == '.' || token->string[0] == '/') {
+                const Path file = token->string;
+                if (file.exists())
+                    isCommand = true;
+            }
 
-            if (!c) {
+            // give JS a chance
+            if (!isCommand) {
+                String jsscript;
+                if (tokensAsJavaScript(token, end, jsscript)) {
+#warning fixme
+                    //c = createJS(jsscript);
+                } else {
+                    isCommand = true;
+                }
+            }
+
+            if (isCommand) {
                 // see if we can find a command by this name
                 const Path file = util::findFile(path, token->string);
                 //error() << "running command" << file << token->args;
-                ChainProcess *proc = new ChainProcess;
-                if (proc->start(file, token->args)) {
-                    c = proc;
+                if (!file.isEmpty()) {
+                    if (!job->addProcess(file, token->args, List<String>(), (token + 1 == end)))
+                        error = true;
                 } else {
-                    delete proc;
+                    error = true;
                 }
             }
-            if (!c) {
-                const String cmd = token->string;
-                printf("Invalid command: %s\n", cmd.constData());
+            if (error) {
+                printf("Invalid command: %s\n", token->string.constData());
                 error = true;
             }
             break; }
         case Shell::Token::Javascript:
-            c = createJS(token->string); // why remote the {}
+#warning fixme
+            //c = createJS(token->string); // why remote the {}
             break;
         case Shell::Token::Operator:
-            ++token;
-            if (token != end) {
-                chain->complete().connect(std::bind(&Input::processTokens, std::move(List<Shell::Token>(token, end)), std::move(input)));
-            }
-            runChain(chain, input, token == end);
-            chain.reset();
-            return;
+            job->wait();
+            job = std::make_shared<Job>(STDOUT_FILENO);
+            break;
         case Shell::Token::Pipe:
             break;
         }
-        if (c) {
-            if (!cur) {
-                cur = c;
-                chain.reset(c);
-            } else {
-                cur->chain(c);
-                cur = c;
-            }
-        } else if (error) {
-            chain.reset();
-            break;
+        if (error) {
+            job = std::make_shared<Job>(STDOUT_FILENO);
         }
         ++token;
     }
 
-    if (chain) {
-        runChain(chain, input, true);
-    } else {
-        if (Input::SharedPtr in = input.lock()) {
-            in->sendMessage(Input::Resume);
-        }
-    }
+    job->wait();
 }
 
 void Input::process(const List<Shell::Token> &tokens)
 {
-    // for (const auto& token : tokens) {
-    //     String args;
-    //     for (const String& arg : token.args) {
-    //         args += arg + ", ";
-    //     }
-    //     if (!args.isEmpty())
-    //         args.chop(2);
-    //     error() << String::format<128>("[%s] %s (%s)", token.string.constData(), Shell::Token::typeName(token.type), args.constData());
-    // }
+    for (const auto& token : tokens) {
+        String args;
+        for (const String& arg : token.args) {
+            args += arg + ", ";
+        }
+        if (!args.isEmpty())
+            args.chop(2);
+        error() << String::format<128>("[%s] %s (%s)", token.string.constData(), Shell::Token::typeName(token.type), args.constData());
+    }
     // return;
 
-    if (EventLoop::SharedPtr loop = EventLoop::mainEventLoop()) {
-        Input::WeakPtr input = shared_from_this();
-        loop->callLaterMove(std::bind(processTokens, std::placeholders::_1, std::placeholders::_2),
-                            std::move(tokens), std::move(input));
-        mState = Waiting;
-        processFiledescriptors();
-    }
+    processTokens(tokens);
 }
 
 enum EnvironmentCharFlag {

@@ -1,6 +1,5 @@
 #include "Shell.h"
 #include "NodeJS.h"
-#include "ChainProcess.h"
 #include "Input.h"
 #include "Util.h"
 #include <rct/EventLoop.h>

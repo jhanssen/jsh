@@ -1,17 +1,21 @@
 #ifndef JOB_H
 #define JOB_H
 
+#include "NodeJS.h"
 #include <rct/Hash.h>
 #include <rct/String.h>
 #include <rct/Path.h>
 #include <rct/List.h>
 #include <rct/Thread.h>
 #include <sys/types.h>
-#include <mutex>
+#include <memory>
 
-class Job : private Thread
+class Job
 {
 public:
+    typedef std::shared_ptr<Job> SharedPtr;
+    typedef std::weak_ptr<Job> WeakPtr;
+
     Job(int stdout);
     ~Job();
 
@@ -20,24 +24,24 @@ public:
         Last = 0x1
     };
 
-    bool addProcess(const Path& command, int flags = None,
-                    const List<String>& arguments = List<String>(),
-                    const List<String>& environ = List<String>());
-    bool addPipe(int& stdout, int flags = None);
+    bool addProcess(const Path& command, const List<String>& arguments,
+                    const List<String>& environ, int flags = None);
+    bool addNode(const String& script, const String& socketFile, int flags = None);
 
-    void exec();
-
-private:
-    virtual void run();
+    void wait();
 
 private:
     struct Entry
     {
+        enum { Process, Node } type;
         pid_t pid;
+        NodeJS::SharedPtr node;
     };
+
+    List<Entry>::iterator wait(List<Entry>::iterator entry);
+
     int mStdout, mInPipe;
-    Set<Entry> mEntries;
-    std::mutex mMutex;
+    List<Entry> mEntries;
 };
 
 #endif

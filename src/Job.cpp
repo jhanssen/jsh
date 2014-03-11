@@ -1,4 +1,6 @@
 #include "Job.h"
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <stdio.h>
 #include <errno.h>
 
@@ -11,9 +13,8 @@ Job::~Job()
 {
 }
 
-bool Job::addProcess(const Path& command, int flags,
-                     const List<String>& arguments,
-                     const List<String>& environ)
+bool Job::addProcess(const Path& command, const List<String>& arguments,
+                     const List<String>& environ, int flags)
 {
     assert(mInPipe != -1);
 
@@ -27,20 +28,19 @@ bool Job::addProcess(const Path& command, int flags,
         stdoutPipe[0] = -1;
         stdoutPipe[1] = STDOUT_FILENO;
     }
-    std::unique_lock<std::mutex> locker(mMutex);
     // fork + exec
     const pid_t pid = fork();
     switch (pid) {
     case -1:
         // error!
         fprintf(stderr, "fork failed %d (%s)\n", errno, strerror(errno));
-        break;
+        return false;
     case 0: {
         // child
         const char **args = new const char*[arguments.size() + 2];
         // const char* args[arguments.size() + 2];
         args[arguments.size() + 1] = 0;
-        args[0] = cmd.nullTerminated();
+        args[0] = command.nullTerminated();
         int pos = 1;
         for (List<String>::const_iterator it = arguments.begin(); it != arguments.end(); ++it) {
             args[pos] = it->nullTerminated();
@@ -54,7 +54,7 @@ bool Job::addProcess(const Path& command, int flags,
 
         if (hasEnviron) {
             pos = 0;
-            //printf("fork, about to exec '%s'\n", cmd.nullTerminated());
+            //printf("fork, about to exec '%s'\n", command.nullTerminated());
             for (List<String>::const_iterator it = environ.begin(); it != environ.end(); ++it) {
                 env[pos] = it->nullTerminated();
                 //printf("env: '%s'\n", env[pos]);
@@ -75,15 +75,15 @@ bool Job::addProcess(const Path& command, int flags,
         // exec
         int ret;
         if (hasEnviron)
-            ret = ::execve(cmd.nullTerminated(), const_cast<char* const*>(args), const_cast<char* const*>(env));
+            ret = ::execve(command.nullTerminated(), const_cast<char* const*>(args), const_cast<char* const*>(env));
         else
-            ret = ::execv(cmd.nullTerminated(), const_cast<char* const*>(args));
+            ret = ::execv(command.nullTerminated(), const_cast<char* const*>(args));
         exit(1);
         (void)ret;
         break; }
     default: {
         // parent
-        mEntries.append({ pid });
+        mEntries.append({ Entry::Process, pid });
         if (mInPipe != STDIN_FILENO)
             close(mInPipe);
         if (stdoutPipe[1] != STDOUT_FILENO)
@@ -91,29 +91,45 @@ bool Job::addProcess(const Path& command, int flags,
         mInPipe = stdoutPipe[0];
         break; }
     }
+    return true;
 }
 
-bool Job::addPipe(int& stdout, int flags)
+bool Job::addNode(const String& script, const String& socketFile, int flags)
 {
-    std::unique_lock<std::mutex> locker(mMutex);
-    stdout = mEntries.isEmpty() ? STDOUT_FILENO : mInPipe;
+    int stdoutPipe = mEntries.isEmpty() ? STDOUT_FILENO : mInPipe;
     if (!(flags & Last)) {
 
     }
+    return false;
 }
 
-void Job::exec()
+List<Job::Entry>::iterator Job::wait(List<Entry>::iterator entry)
 {
-    {
-        std::unique_lock<std::mutex> locker(mMutex);
-        if (mEntries.isEmpty()) {
-            return;
+    for (;;) {
+        switch (entry->type) {
+        case Job::Entry::Process: {
+            int status;
+            const pid_t pid = waitpid(WAIT_ANY, &status, WUNTRACED);
+            if (pid == -1) {
+                if (errno == EINTR)
+                    break;
+                fprintf(stderr, "waitpid error %d (%s)\n", errno, strerror(errno));
+                return mEntries.end();
+            } else if (pid == entry->pid) {
+                return mEntries.erase(entry);
+            }
+            entry = mEntries.erase(entry);
+            break; }
+        case Job::Entry::Node:
+            break;
         }
     }
-    start();
-    join();
 }
 
-void Job::run()
+void Job::wait()
 {
+    List<Entry>::iterator entry = mEntries.begin();
+    while (entry != mEntries.end()) {
+        entry = wait(entry);
+    }
 }
