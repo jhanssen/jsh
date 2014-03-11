@@ -1,4 +1,8 @@
 #include "Job.h"
+#include "NodeConnection.h"
+#include "Shell.h"
+#include "Splicer.h"
+#include "Util.h"
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <stdio.h>
@@ -69,6 +73,7 @@ bool Job::addProcess(const Path& command, const List<String>& arguments,
         }
         if (stdoutPipe[1] != STDOUT_FILENO) {
             dup2(stdoutPipe[1], STDOUT_FILENO);
+            close(stdoutPipe[1]);
             close(stdoutPipe[0]);
         }
 
@@ -94,42 +99,60 @@ bool Job::addProcess(const Path& command, const List<String>& arguments,
     return true;
 }
 
-bool Job::addNode(const String& script, const String& socketFile, int flags)
+void Job::closedCallback(void* userdata, int from, int to)
 {
-    int stdoutPipe = mEntries.isEmpty() ? STDOUT_FILENO : mInPipe;
-    if (!(flags & Last)) {
-
-    }
-    return false;
+    Job* job = static_cast<Job*>(userdata);
+    std::unique_lock<std::mutex> locker(job->mMutex);
+    assert(job->mPendingJSJobs > 0);
+    --job->mPendingJSJobs;
 }
 
-List<Job::Entry>::iterator Job::wait(List<Entry>::iterator entry)
+bool Job::addNodeJS(const String& script, int fd, int flags)
 {
-    for (;;) {
-        switch (entry->type) {
-        case Job::Entry::Process: {
-            int status;
-            const pid_t pid = waitpid(WAIT_ANY, &status, WUNTRACED);
-            if (pid == -1) {
-                if (errno == EINTR)
-                    break;
-                fprintf(stderr, "waitpid error %d (%s)\n", errno, strerror(errno));
-                return mEntries.end();
-            } else if (pid == entry->pid) {
-                return mEntries.erase(entry);
-            }
-            entry = mEntries.erase(entry);
-            break; }
-        case Job::Entry::Node:
-            break;
-        }
+    int stdinPipe = mEntries.isEmpty() ? STDIN_FILENO : mInPipe;
+    NodeConnection connection(fd);
+    if (!connection.send(fd) || !connection.send(script)) {
+        fprintf(stderr, "unable to write script to node (%d)\n", script.size());
+        return false;
     }
+    Splicer::splice(stdinPipe, fd, closedCallback, this);
+    if (flags & Last) {
+        Splicer::splice(fd, STDOUT_FILENO, closedCallback, this);
+    } else {
+        mInPipe = fd;
+    }
+
+    std::unique_lock<std::mutex> locker(mMutex);
+    ++mPendingJSJobs;
+
+    return true;
 }
 
 void Job::wait()
 {
-    List<Entry>::iterator entry = mEntries.begin();
-    while (entry != mEntries.end()) {
-        entry = wait(entry);
+    Set<pid_t> processes;
+    {
+        std::unique_lock<std::mutex> locker(mMutex);
+        for (const auto& entry : mEntries) {
+            if (entry.type == Entry::Process)
+                processes.insert(entry.pid);
+        }
+    }
+
+    int status;
+    while (!processes.isEmpty()) {
+        const pid_t pid = waitpid(WAIT_ANY, &status, WUNTRACED);
+        assert(pid);
+        if (pid > 0) {
+            processes.erase(pid);
+        } else {
+            fprintf(stderr, "waitpid returned < 0\n");
+        }
+    }
+
+    std::unique_lock<std::mutex> locker(mMutex);
+    assert(mPendingJSJobs >= 0);
+    while (mPendingJSJobs) {
+        mCond.wait(locker);
     }
 }

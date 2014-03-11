@@ -9,6 +9,7 @@
 #include <rct/Thread.h>
 #include <rct/Log.h>
 #include <rct/List.h>
+#include <rct/SocketClient.h>
 #include <rct/Value.h>
 #include <histedit.h>
 #include <locale.h>
@@ -645,6 +646,15 @@ bool Input::tokensAsJavaScript(List<Shell::Token>::const_iterator& token, const 
 //     return 0;
 // }
 
+static inline int createNodeJS(const String& socketFile)
+{
+    SocketClient::SharedPtr client = std::make_shared<SocketClient>(SocketClient::Blocking);
+    if (!client->connect(socketFile)) {
+        return -1;
+    }
+    return client->takeFD();
+}
+
 void Input::processTokens(const List<Shell::Token>& tokens)
 {
     const String path = Shell::instance()->environment("PATH");
@@ -695,10 +705,14 @@ void Input::processTokens(const List<Shell::Token>& tokens)
                 error = true;
             }
             break; }
-        case Shell::Token::Javascript:
-#warning fixme
-            //c = createJS(token->string); // why remote the {}
-            break;
+        case Shell::Token::Javascript: {
+            const int fd = createNodeJS(util::homeify("~/.jsh-socket"));
+            if (fd == -1) {
+                printf("Unable to open connection to node\n");
+                error = true;
+            }
+            job->addNodeJS(token->string, fd, (token + 1 == end));
+            break; }
         case Shell::Token::Operator:
             job->wait();
             job = std::make_shared<Job>(STDOUT_FILENO);

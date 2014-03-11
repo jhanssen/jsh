@@ -14,8 +14,10 @@ find_v8_lib(V8_NOSNAPSHOT_LIB ${V8_DIR} "v8_nosnapshot")
 set(CLIENT_SOURCES
   Input.cpp
   Job.cpp
+  NodeConnection.cpp
   NodeJS.cpp
   Shell.cpp
+  Splicer.cpp
   Util.cpp
   main.cpp
   ${CMAKE_CURRENT_LIST_DIR}/../3rdparty/duktape-0.9.0/src/duktape.c

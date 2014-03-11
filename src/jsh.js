@@ -1,11 +1,14 @@
 var net = require('net');
 
-function readObject(obj)
+function readObject(obj, socket)
 {
+    console.log(obj.toString());
+    socket.end();
 }
 
 function unixData(socket, data)
 {
+    console.log(data.length);
     if (socket.jshData === undefined)
         socket.jshData = data;
     else
@@ -15,9 +18,10 @@ function unixData(socket, data)
             socket.jshSize = socket.jshData.readUInt32LE(0, true);
             if (!socket.jshSize)
                 return;
+            console.log("size " + socket.jshSize);
         }
         if (socket.jshData.length - 4 >= socket.jshSize) {
-            readObject(socket.jshData.slice(4, socket.jshSize - 4));
+            readObject(socket.jshData.slice(4, socket.jshSize + 4), socket);
             var newLength = socket.jshData.length - (socket.jshSize + 4);
             if (!newLength) {
                 socket.jshData = undefined;
@@ -41,4 +45,4 @@ function unixServer(socket)
 }
 
 var server = net.createServer(unixServer);
-server.listen('~/.jsh-socket');
+server.listen('/home/jhanssen/.jsh-socket');

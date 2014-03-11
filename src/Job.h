@@ -9,6 +9,8 @@
 #include <rct/Thread.h>
 #include <sys/types.h>
 #include <memory>
+#include <mutex>
+#include <condition_variable>
 
 class Job
 {
@@ -26,22 +28,33 @@ public:
 
     bool addProcess(const Path& command, const List<String>& arguments,
                     const List<String>& environ, int flags = None);
-    bool addNode(const String& script, const String& socketFile, int flags = None);
+    bool addNodeJS(const String& script, int fd, int flags = None);
 
     void wait();
+
+private:
+    static void closedCallback(void* userdata, int from, int to);
 
 private:
     struct Entry
     {
         enum { Process, Node } type;
-        pid_t pid;
-        NodeJS::SharedPtr node;
+        union {
+            pid_t pid;
+            int fd;
+        };
     };
 
     List<Entry>::iterator wait(List<Entry>::iterator entry);
 
     int mStdout, mInPipe;
     List<Entry> mEntries;
+
+    Set<pid_t> processes;
+
+    std::mutex mMutex;
+    std::condition_variable mCond;
+    int mPendingJSJobs;
 };
 
 #endif
