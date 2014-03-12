@@ -69,7 +69,7 @@ void SplicerThread::run()
                 if (r > 0) {
                     ssize_t wpos = 0;
                     while (wpos < r) {
-                        const ssize_t w = ::write(it.second, buf + wpos, sizeof(buf) - wpos);
+                        const ssize_t w = ::write(it.second, buf + wpos, r - wpos);
                         if (w >= 0) {
                             wpos += w;
                         } else {
