@@ -9,32 +9,28 @@
 #endif
 #include <fcntl.h>
 #include <unistd.h>
+#include <errno.h>
+#include <string.h>
+#include <sys/sendfile.h>
 
 class SplicerThread : public Thread
 {
 public:
     virtual void run();
 
-    void splice(int from, int to, Splicer::ClosedCallback callback, void* userdata);
+    void splice(int from, int to);
 
 private:
     std::mutex mutex;
     int msgPipe[2];
-
-    struct Data
-    {
-        int to;
-        Splicer::ClosedCallback callback;
-        void* userdata;
-    };
-    Hash<int, Data> fds;
+    Hash<int, int> fds;
 };
 
 void SplicerThread::run()
 {
     fd_set rd;
     int max;
-    Hash<int, Data> local;
+    Hash<int, int> local;
     for (;;) {
         {
             std::unique_lock<std::mutex> locker(mutex);
@@ -57,12 +53,33 @@ void SplicerThread::run()
             ::read(msgPipe[0], &c, 1);
         }
 
+        char buf[8192];
         for (const auto& it : local) {
             if (FD_ISSET(it.first, &rd)) {
-                if (::splice(it.first, 0, it.second.to, 0, 32768, 0) <= 0) {
-                    if (it.second.callback)
-                        it.second.callback(it.second.userdata, it.first, it.second.to);
-                    std::unique_lock<std::mutex> locker(mutex);
+                //const ssize_t spliced = ::splice(it.first, 0, it.second, 0, 32768, 0);
+                // const ssize_t spliced = ::sendfile(it.second, it.first, 0, 32768);
+                // if (spliced <= 0) {
+                //     printf("splice error %d (%d %s)\n", spliced, errno, strerror(errno));
+                //     std::unique_lock<std::mutex> locker(mutex);
+                //     fds.erase(it.first);
+                // } else {
+                //     printf("spliced %d bytes\n", spliced);
+                // }
+                const ssize_t r = ::read(it.first, buf, sizeof(buf));
+                if (r > 0) {
+                    ssize_t wpos = 0;
+                    while (wpos < r) {
+                        const ssize_t w = ::write(it.second, buf + wpos, sizeof(buf) - wpos);
+                        if (w >= 0) {
+                            wpos += w;
+                        } else {
+                            fprintf(stderr, "splice write failed\n");
+                            fds.erase(it.first);
+                            break;
+                        }
+                    }
+                } else {
+                    fprintf(stderr, "splice read failed\n");
                     fds.erase(it.first);
                 }
             }
@@ -70,10 +87,10 @@ void SplicerThread::run()
     }
 }
 
-void SplicerThread::splice(int from, int to, Splicer::ClosedCallback callback, void* userdata)
+void SplicerThread::splice(int from, int to)
 {
     std::unique_lock<std::mutex> locker(mutex);
-    fds[from] = { to, callback, userdata };
+    fds[from] = to;
     for (;;) {
         const int w = ::write(msgPipe[1], "q", 1);
         assert(w);
@@ -92,8 +109,8 @@ static void init()
 
 static std::once_flag spliceFlag;
 
-void Splicer::splice(int from, int to, ClosedCallback callback, void* userdata)
+void Splicer::splice(int from, int to)
 {
     std::call_once(spliceFlag, init);
-    sThread->splice(from, to, callback, userdata);
+    sThread->splice(from, to);
 }

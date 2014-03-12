@@ -4,9 +4,7 @@
 class Splicer
 {
 public:
-    typedef void (*ClosedCallback)(void*, int, int);
-
-    static void splice(int from, int to, ClosedCallback callback, void* userdata);
+    static void splice(int from, int to);
 };
 
 #endif

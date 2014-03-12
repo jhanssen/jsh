@@ -33,7 +33,7 @@ public:
     void wait();
 
 private:
-    static void closedCallback(void* userdata, int from, int to);
+    void unregister(int fd);
 
 private:
     struct Entry
@@ -55,6 +55,8 @@ private:
     std::mutex mMutex;
     std::condition_variable mCond;
     int mPendingJSJobs;
+
+    friend class JSWaiter;
 };
 
 #endif
