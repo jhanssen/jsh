@@ -26,6 +26,7 @@ function readObject(pid, obj, socket)
             } else {
                 pendingClosed.push(this._pid);
             }
+            socket.end();
             funcs[socket] = undefined;
             this._closed = true;
         },

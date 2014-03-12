@@ -73,13 +73,18 @@ void SplicerThread::run()
                         if (w >= 0) {
                             wpos += w;
                         } else {
-                            fprintf(stderr, "splice write failed\n");
+                            fprintf(stderr, "splice write failed %d (%d %s)\n", it.first, errno, strerror(errno));
+                            std::unique_lock<std::mutex> locker(mutex);
                             fds.erase(it.first);
                             break;
                         }
                     }
                 } else {
-                    fprintf(stderr, "splice read failed\n");
+                    if (it.second != STDOUT_FILENO)
+                        ::close(it.second);
+                    if (r < 0)
+                        fprintf(stderr, "splice read failed %d (%d %s)\n", it.first, errno, strerror(errno));
+                    std::unique_lock<std::mutex> locker(mutex);
                     fds.erase(it.first);
                 }
             }
