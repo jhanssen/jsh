@@ -32,7 +32,7 @@ function readObject(pid, obj, socket)
         },
         stdout: function(data) {
             console.log("writing " + data);
-            socket.write("" + data);
+            socket.write("" + data + "\n");
         },
         async: undefined,
 
