@@ -20,6 +20,8 @@ static inline void usage(FILE *f)
             "  --no-autostart-node-js|-a [arg]            Don't start node.js in the background.\n"
             "  --verbose|-v                               Be more verbose.\n"
             "  --silent|-S                                Be silent.\n"
+            "  --edit-rc|-x [arg]                         Use this file instead of ~/.editrc for libedit initialization.\n"
+            "  --history-file|-H [arg]                    Use this file for command history (default ~/.jsh_history).\n"
             "  --logfile|-l [arg]                         Log to this file.\n");
 }
 
@@ -45,6 +47,8 @@ int Shell::exec()
         { "socket-file-template", required_argument, 0, 'T' },
         { "no-autostart-node-js", no_argument, 0, 'a' },
         { "verbose", no_argument, 0, 'v' },
+        { "history-file", required_argument, 0, 'H' },
+        { "edit-rc", required_argument, 0, 'x' },
         { "silent", no_argument, 0, 'S' },
         { "log-file", required_argument, 0, 'l' },
         { 0, 0, 0, 0 }
@@ -55,9 +59,9 @@ int Shell::exec()
         String unused;
         for (int i=0; i<26; ++i) {
             if (!shortOptions.contains('a' + i))
-            unused.append('a' + i);
+                unused.append('a' + i);
             if (!shortOptions.contains('A' + i))
-            unused.append('A' + i);
+                unused.append('A' + i);
         }
         printf("Unused: %s\n", unused.constData());
         for (int i=0; opts[i].name; ++i) {
@@ -74,11 +78,13 @@ int Shell::exec()
 
     int logLevel = Error;
     Path logFile;
+    Path histFile = home + "/.jsh_history";
+    List<Path> editRcFiles;
 
     while (true) {
         const int c = getopt_long(mArgc, mArgv, shortOptions.constData(), opts, 0);
         if (c == -1)
-        break;
+            break;
         switch (c) {
         case 'h':
             usage(stdout);
@@ -92,6 +98,18 @@ int Shell::exec()
         case 'a':
             nodeFlags &= ~NodeJS::Autostart;
             break;
+        case 'H':
+            histFile = optarg;
+            break;
+        case 'x': {
+            Path p = optarg;
+            if (p.isFile()) {
+                editRcFiles << optarg;
+            } else {
+                error() << "Can't open" << optarg << "for reading";
+                return 1;
+            }
+            break; }
         case 'v':
             if (logLevel >= 0)
                 ++logLevel;
@@ -108,7 +126,14 @@ int Shell::exec()
         }
     }
 
-    if (!initLogging(mArgv[0], LogStderr, logLevel, logFile, 0)) {
+    if (editRcFiles.isEmpty()) {
+        const Path rcFile = (home + "/.editrc");
+        if (rcFile.isFile()) {
+            editRcFiles << rcFile;
+        }
+    }
+
+    if (!initLogging(mArgv[0], 0, logLevel, logFile, 0)) {
         fprintf(stderr, "Can't initialize logging with %d %s\n",
                 logLevel, logFile.constData());
         return 1;
@@ -127,7 +152,14 @@ int Shell::exec()
     mEventLoop = std::make_shared<EventLoop>();
     mEventLoop->init(EventLoop::MainEventLoop);
 
-    mInput = std::make_shared<Input>(mArgc, mArgv);
+    const Input::Options options = {
+        mArgv[0],
+        histFile,
+        editRcFiles,
+        logLevel
+    };
+
+    mInput = std::make_shared<Input>(options);
     mInput->start();
 
     mNodeJS = std::make_shared<NodeJS>();

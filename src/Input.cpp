@@ -288,10 +288,6 @@ void Input::run()
     (void)signal(SIGHUP,  sig);
     (void)signal(SIGTERM, sig);
 
-    const Path home = util::homeDirectory();
-    const Path elFile = home + "/.jshel";
-    const Path histFile = home + "/.jshist";
-
     mEl = nullptr;
     int numc;
     const wchar_t* line;
@@ -300,20 +296,18 @@ void Input::run()
 
     hist = history_winit();
     history_w(hist, &ev, H_SETSIZE, 100);
-    history_w(hist, &ev, H_LOAD, histFile.constData());
+    history_w(hist, &ev, H_LOAD, mOptions.histFile.constData());
 
-    mEl = el_init(mArgv[0], stdin, stdout, stderr);
+    mEl = el_init(mOptions.argv0.constData(), stdin, stdout, stderr);
     el_wset(mEl, EL_CLIENTDATA, this);
 
     el_wset(mEl, EL_EDITOR, L"emacs");
     el_wset(mEl, EL_SIGNAL, 1);
     el_wset(mEl, EL_GETCFN, &Input::getChar);
     el_wset(mEl, EL_PROMPT_ESC, prompt, '\1');
-    if (const char *home = getenv("HOME")) {
-        Path rc = home;
-        rc += "/.editrc";
-        if (rc.exists())
-            el_source(mEl, rc.constData());
+    for (const auto &rcFile : mOptions.editRcFiles) {
+        el_source(mEl, rcFile.constData());
+        // ### complain on errors?
     }
 
     el_wset(mEl, EL_HIST, history_w, hist);
@@ -322,8 +316,6 @@ void Input::run()
     el_wset(mEl, EL_ADDFN, L"ed-complete", L"Complete argument", &Input::elComplete);
     // bind tab
     el_wset(mEl, EL_BIND, L"^I", L"ed-complete", NULL);
-
-    el_source(mEl, elFile.constData());
 
     while ((line = el_wgets(mEl, &numc)) && numc) {
         if (int s = gotsig.load()) {
@@ -362,7 +354,7 @@ void Input::run()
         }
     }
 
-    history_w(hist, &ev, H_SAVE, histFile.constData());
+    history_w(hist, &ev, H_SAVE, mOptions.histFile.constData());
     history_wend(hist);
     el_end(mEl);
 

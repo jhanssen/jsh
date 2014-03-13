@@ -6,6 +6,7 @@
 #include <rct/String.h>
 #include <rct/SocketClient.h>
 #include <rct/Timer.h>
+#include <rct/Path.h>
 #include <string>
 #include <memory>
 
@@ -18,8 +19,15 @@ public:
     typedef std::shared_ptr<Input> SharedPtr;
     typedef std::weak_ptr<Input> WeakPtr;
 
-    Input(int argc, char** argv)
-        : mArgc(argc), mArgv(argv), mEl(0), mIsUtf8(false), mState(Normal)
+    struct Options
+    {
+        Path argv0;
+        Path histFile;
+        List<Path> editRcFiles;
+        int verbosity;
+    };
+    Input(const Options &options)
+        : mOptions(options), mEl(0), mIsUtf8(false), mState(Normal)
     {
     }
 
@@ -66,13 +74,12 @@ protected:
     virtual void run();
 
 private:
-    int mArgc;
-    char** mArgv;
     EditLine* mEl;
     String mBuffer;
     int mMsgPipe[2];
     int mStdoutPipe[2];
     bool mIsUtf8;
+    Options mOptions;
 
     enum State {
         Normal,
