@@ -6,6 +6,7 @@
 #include <rct/String.h>
 #include <rct/SocketClient.h>
 #include <rct/Timer.h>
+#include <rct/Process.h>
 #include <rct/Path.h>
 #include <string>
 #include <memory>
@@ -19,6 +20,11 @@ public:
     typedef std::shared_ptr<Input> SharedPtr;
     typedef std::weak_ptr<Input> WeakPtr;
 
+    enum Flag {
+        None = 0x0,
+        AutostartNodeJS = 0x1
+    };
+
     struct Options
     {
         Path argv0;
@@ -26,11 +32,22 @@ public:
         List<Path> editRcFiles;
         int verbosity;
         Path socketFile;
-        unsigned int nodeFlags;
+        unsigned int flags;
     };
     Input(const Options &options)
-        : mOptions(options), mEl(0), mIsUtf8(false), mState(Normal)
+        : mOptions(options), mEl(0), mIsUtf8(false), mState(Normal), mNodeProcess(0)
     {
+        if (options.flags & AutostartNodeJS)
+            launchNode();
+    }
+
+    ~Input()
+    {
+        if (mNodeProcess) {
+            mNodeProcess->kill();
+            delete mNodeProcess;
+        }
+        Path::rm(mOptions.socketFile);
     }
 
     // Assumes multi-byte encoding
@@ -72,6 +89,8 @@ private:
     };
     int processFiledescriptors(int mode = 0, wchar_t* ch = 0);
 
+    void launchNode();
+
 protected:
     virtual void run();
 
@@ -87,6 +106,8 @@ private:
         Normal,
         Waiting
     } mState;
+
+    Process *mNodeProcess;
 };
 
 #endif

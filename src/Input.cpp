@@ -1,6 +1,5 @@
 #include "Input.h"
 #include "Job.h"
-#include "NodeJS.h"
 #include "Util.h"
 #include "Shell.h"
 #include <rct/EventLoop.h>
@@ -800,55 +799,71 @@ bool Input::expandEnvironment(String &string, String &err) const
     }
 }
 
-static Value jsCall(const String &object, const String &function,
-                    const List<Value> &args, bool *ok = 0)
-{
-    Shell* shell = Shell::instance();
-    return shell->runAndWait<Value>([&]() -> Value {
-            return shell->nodeJS()->call(object, function, args, ok);
-        });
-}
+// static Value jsCall(const String &object, const String &function,
+//                     const List<Value> &args, bool *ok = 0)
+// {
+//     Shell* shell = Shell::instance();
+//     return shell->runAndWait<Value>([&]() -> Value {
+//             return shell->nodeJS()->call(object, function, args, ok);
+//         });
+// }
 
-static Value jsCall(const String &function, const List<Value> &args, bool *ok = 0)
-{
-    return jsCall(String(), function, args, ok);
-}
+// static Value jsCall(const String &function, const List<Value> &args, bool *ok = 0)
+// {
+//     return jsCall(String(), function, args, ok);
+// }
 
 // cursor is the unicode character position, line is in utf8
 Input::CompletionResult Input::complete(const String &line, int cursor, String &insert)
 {
-    String err;
-    const List<Shell::Token> tokens = tokenize(line, Tokenize_None, err);
-    if (!err.isEmpty()) {
-        return Completion_Error;
-    } else if (tokens.isEmpty()) {
-        return Completion_Refresh;
-    }
+    // String err;
+    // const List<Shell::Token> tokens = tokenize(line, Tokenize_None, err);
+    // if (!err.isEmpty()) {
+    //     return Completion_Error;
+    // } else if (tokens.isEmpty()) {
+    //     return Completion_Refresh;
+    // }
 
-    List<Value> args;
-    args.append(line);
-    args.append(cursor);
-    List<Value> toks;
-    for (auto token : tokens) {
-        Map<String, Value> val;
-        val["type"] = Shell::Token::typeName(token.type);
-        val["string"] = token.string;
-        toks.append(val);
-    }
-    args.append(toks);
-    bool ok;
-    //const Value value = mNodeJS->call("complete", args, &ok);
-    const Value value = jsCall("complete", args, &ok);
-    if (!ok)
-        return Completion_Error;
-    const String result = value.value<String>("result");
-    insert = value.value<String>("insert");
-    if (result == "refresh") {
-        return Completion_Refresh;
-    } else if (result == "redisplay") {
-        return Completion_Redisplay;
-    } else {
-        insert.clear();
-        return Completion_Error;
+    // List<Value> args;
+    // args.append(line);
+    // args.append(cursor);
+    // List<Value> toks;
+    // for (auto token : tokens) {
+    //     Map<String, Value> val;
+    //     val["type"] = Shell::Token::typeName(token.type);
+    //     val["string"] = token.string;
+    //     toks.append(val);
+    // }
+    // args.append(toks);
+    // bool ok;
+    // //const Value value = mNodeJS->call("complete", args, &ok);
+    // const Value value = jsCall("complete", args, &ok);
+    // if (!ok)
+    //     return Completion_Error;
+    // const String result = value.value<String>("result");
+    // insert = value.value<String>("insert");
+    // if (result == "refresh") {
+    //     return Completion_Refresh;
+    // } else if (result == "redisplay") {
+    //     return Completion_Redisplay;
+    // } else {
+    //     insert.clear();
+    //     return Completion_Error;
+    // }
+}
+void Input::launchNode()
+{
+    assert(!mNodeProcess);
+    mNodeProcess = new Process;
+    List<String> args;
+    args << JSH_DOT_JS << String::format<128>("--socket-file=%s", mOptions.socketFile.constData());
+    mNodeProcess->readyReadStdErr().connect([](Process *proc) {
+            error() << "nodejs stderr" << proc->readAllStdErr();
+        });
+
+    if (!mNodeProcess->start("node", args) && !mNodeProcess->start("nodejs", args)) {
+        error("Can't launch nodejs %s", mNodeProcess->errorString().constData());
+        delete mNodeProcess;
+        mNodeProcess = 0;
     }
 }

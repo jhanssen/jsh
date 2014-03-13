@@ -15,7 +15,6 @@ set(CLIENT_SOURCES
   Input.cpp
   Job.cpp
   NodeConnection.cpp
-  NodeJS.cpp
   Shell.cpp
   Splicer.cpp
   Util.cpp

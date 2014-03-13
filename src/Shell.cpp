@@ -1,9 +1,9 @@
 #include "Shell.h"
-#include "NodeJS.h"
 #include "Input.h"
 #include "Util.h"
 #include <rct/EventLoop.h>
 #include <rct/Rct.h>
+#include <rct/Log.h>
 #include <getopt.h>
 
 extern char **environ;
@@ -39,7 +39,7 @@ int Shell::exec()
     const Path home = util::homeDirectory();
     Path socketFile;
     String socketFileTemplate = "/tmp/jsh.XXXXXX";
-    unsigned int nodeFlags = NodeJS::Autostart;
+    unsigned int inputFlags = Input::AutostartNodeJS;
 
     option opts[] = {
         { "help", no_argument, 0, 'h' },
@@ -96,7 +96,7 @@ int Shell::exec()
             socketFileTemplate = optarg;
             break;
         case 'a':
-            nodeFlags &= ~NodeJS::Autostart;
+            inputFlags &= ~Input::AutostartNodeJS;
             break;
         case 'H':
             histFile = optarg;
@@ -158,14 +158,11 @@ int Shell::exec()
         editRcFiles,
         logLevel,
         socketFile,
-        nodeFlags
+        inputFlags
     };
 
     mInput = std::make_shared<Input>(options);
     mInput->start();
-
-    mNodeJS = std::make_shared<NodeJS>();
-    mNodeJS->init(socketFile, nodeFlags);
 
     mEventLoop->exec();
     mInput->join();

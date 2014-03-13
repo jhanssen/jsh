@@ -6,3 +6,4 @@ rules.ninja
 build.ninja
 jsh
 /src/.gdb_history
+/nodejs.log

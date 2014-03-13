@@ -10,7 +10,6 @@
 #include <condition_variable>
 #include <assert.h>
 
-class NodeJS;
 class Input;
 class Shell
 {
@@ -27,8 +26,6 @@ public:
 
     template<typename T>
     T runAndWait(std::function<T()>&& func);
-
-    std::shared_ptr<NodeJS> nodeJS() { return mNodeJS; }
 
     static Shell* instance() { return sInstance; }
 
@@ -57,7 +54,6 @@ private:
     std::shared_ptr<Input> mInput;
     EventLoop::SharedPtr mEventLoop;
     Hash<String, String> mEnviron;
-    std::shared_ptr<NodeJS> mNodeJS;
 
     static Shell* sInstance;
 
