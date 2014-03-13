@@ -1,6 +1,41 @@
 var net = require('net');
 var fs = require('fs');
 
+if (!String.prototype.startsWith) {
+    Object.defineProperty(String.prototype, 'startsWith', {
+        enumerable: false,
+        configurable: false,
+        writable: false,
+        value: function (searchString, position) {
+            position = position || 0;
+            return this.indexOf(searchString, position) === position;
+        }
+    });
+}
+
+if (!String.prototype.endsWith) {
+    Object.defineProperty(String.prototype, 'endsWith', {
+        enumerable: false,
+        configurable: false,
+        writable: false,
+        value: function (searchString, position) {
+            position = position || this.length;
+            position = position - searchString.length;
+            var lastIndex = this.lastIndexOf(searchString);
+            return lastIndex !== -1 && lastIndex === position;
+        }
+    });
+}
+
+if (!String.prototype.contains) {
+    Object.defineProperty(String.prototype, 'contains', {
+        enumerable: false,
+        configurable: false,
+        writable: false,
+        value: function (needle) { return this.indexOf(needle) !== -1; }
+    });
+}
+
 var jsh = (function() {
     var cmd = undefined;
     var funcs = {};
@@ -141,7 +176,12 @@ var jsh = (function() {
     var home = (process.env.HOME || process.env.HOMEPATH || process.env.USERPROFILE);
     if (home[home.length - 1] != '/')
         home += '/';
-    var socketFile = process.argv[2] || (home + ".jsh-socket");
+    var socketFile = home + ".jsh-socket";
+    for (var i=2; i<process.argv.length; ++i) {
+        var arg = process.argv[i];
+        if (arg.startsWith("--socket-file=") && arg.length > 14)
+            socketFile = arg.substr(14);
+    }
     var server = net.createServer(unixServer);
     fs.unlinkSync(socketFile);
     server.listen(socketFile);

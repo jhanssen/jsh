@@ -2,14 +2,34 @@
 #include <rct/Log.h>
 
 NodeJS::NodeJS()
-    : mNodePendingMessageLength(0)
+    : mFlags(0), mNodePendingMessageLength(0), mNodeProcess(0)
 {
     mSocketClientReconnectTimer.timeout().connect(std::bind(&NodeJS::reconnect, this));
 }
 
-bool NodeJS::init(const Path &rcFile, const Path &socketFile)
+NodeJS::~NodeJS()
 {
+    if (mNodeProcess) {
+        mNodeProcess->kill();
+        delete mNodeProcess;
+    }
+}
+
+bool NodeJS::init(const Path &socketFile, unsigned int flags)
+{
+    mFlags = flags;
     mSocketFile = socketFile;
+    if (flags & Autostart) {
+        mNodeProcess = new Process;
+        List<String> args;
+        args << JSH_DOT_JS << String::format<128>("--socket-file=%s", socketFile.constData());
+        if (!mNodeProcess->start("node", args) && !mNodeProcess->start("nodejs", args)) {
+            error("Can't launch nodejs %s", mNodeProcess->errorString().constData());
+            delete mNodeProcess;
+            mNodeProcess = 0;
+            return false;
+        }
+    }
     reconnect();
 }
 

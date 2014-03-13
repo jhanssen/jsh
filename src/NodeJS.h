@@ -7,6 +7,7 @@
 #include <rct/Timer.h>
 #include <rct/Value.h>
 #include <rct/SignalSlot.h>
+#include <rct/Process.h>
 
 class NodeJS
 {
@@ -15,7 +16,12 @@ public:
     typedef std::weak_ptr<NodeJS> WeakPtr;
 
     NodeJS();
-    bool init(const Path &rcFile, const Path &socket);
+    ~NodeJS();
+    enum Flag {
+        None = 0x0,
+        Autostart = 0x1
+    };
+    bool init(const Path &socket, unsigned int flags);
     bool checkSyntax(const String &code);
     Value load(const Path &path);
 
@@ -52,12 +58,14 @@ private:
     void onReadyRead(const SocketClient::SharedPtr &);
     void processNodeResponse(const char *data, int length);
 
+    unsigned int mFlags;
     Path mSocketFile;
     SocketClient::SharedPtr mSocketClient;
     Timer mSocketClientReconnectTimer;
     String mNodeReadBuffer;
     uint32_t mNodePendingMessageLength;
     Signal<std::function<void(const Value&)> > mMessage;
+    Process *mNodeProcess;
 };
 
 

@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 2.8.6)
 if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif ()
-add_definitions(-DOS_${CMAKE_SYSTEM_NAME})
+add_definitions(-DOS_${CMAKE_SYSTEM_NAME} -DJSH_DOT_JS=\"${CMAKE_CURRENT_LIST_DIR}/jsh.js\")
 
 include(v8.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/../3rdparty/rct/compiler.cmake)
