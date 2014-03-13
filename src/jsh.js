@@ -37,20 +37,12 @@ if (!String.prototype.contains) {
 }
 
 var jsh = (function() {
-    var cmd = undefined;
     var funcs = {};
-    var pendingClosed = [];
-    var pidPad = "00000000000000000000";
     var logFile;
     try {
         logFile = fs.openSync("nodejs.log", 'w');
     } catch (err) {}
     var logToConsoleOut = process.env.JSH_LOG_TO_CONSOLE_OUT == "1";
-
-    function writePid(pid) {
-        var str = "" + pid;
-        cmd.write(pidPad.substring(0, pidPad.length - str.length) + str);
-    }
 
     function readObject(pid, obj, socket)
     {
@@ -64,11 +56,6 @@ var jsh = (function() {
                 console.log("close " + this._pid);
                 if (this._closed)
                     return;
-                if (cmd) {
-                    writePid(this._pid);
-                } else {
-                    pendingClosed.push(this._pid);
-                }
                 socket.end();
                 funcs[socket] = undefined;
                 this._closed = true;
@@ -109,9 +96,6 @@ var jsh = (function() {
 
     function unixData(socket, data)
     {
-        if (socket == cmd)
-            return;
-
         if (funcs[socket]) {
             funcs[socket].io._call("stdin", data.toString());
             return;
@@ -128,16 +112,6 @@ var jsh = (function() {
                 if (!socket.jshPid)
                     return;
                 console.log("pid " + socket.jshPid);
-            }
-            if (socket.jshPid == -1) {
-                // command socket
-                cmd = socket;
-                for (var pid in pendingClosed) {
-                    console.log("writing pending pid " + pendingClosed[pid]);
-                    writePid(pendingClosed[pid]);
-                }
-                pendingClosed = [];
-                return;
             }
             if (socket.jshPid && !socket.jshSize) {
                 socket.jshSize = socket.jshData.readUInt32LE(4, true);
