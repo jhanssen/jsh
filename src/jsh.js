@@ -157,5 +157,7 @@ function unixServer(socket)
     socket.on("data", function(data) { unixData(socket, data); });
 }
 
+var socketFile = process.argv[2] || ((process.env.HOME || process.env.HOMEPATH || process.env.USERPROFILE) + "/.jsh-socket");
 var server = net.createServer(unixServer);
-server.listen('/home/jhanssen/.jsh-socket');
+fs.unlinkSync(socketFile);
+server.listen(socketFile);
