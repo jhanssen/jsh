@@ -121,7 +121,8 @@ bool Job::addProcess(const Path& command, const List<String>& arguments,
         break; }
     default: {
         // parent
-        mEntries.append({ Entry::Process, pid });
+        const Entry entry = { Entry::Process, pid };
+        mEntries.append(entry);
         if (!mInIsJS && mInPipe != STDIN_FILENO)
             close(mInPipe);
         if (stdoutPipe[1] != STDOUT_FILENO)
