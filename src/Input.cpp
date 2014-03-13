@@ -334,6 +334,7 @@ void Input::run()
             continue;
         }
         history_w(hist, &ev, H_ENTER, line);
+        history_w(hist, &ev, H_SAVE, mOptions.histFile.constData());
         continuation = false;
         if (!mBuffer.isEmpty()) {
             l = mBuffer + l;
@@ -354,7 +355,6 @@ void Input::run()
         }
     }
 
-    history_w(hist, &ev, H_SAVE, mOptions.histFile.constData());
     history_wend(hist);
     el_end(mEl);
 
@@ -698,12 +698,13 @@ void Input::processTokens(const List<Shell::Token>& tokens)
             }
             break; }
         case Shell::Token::Javascript: {
-            const int fd = createNodeJS(util::homeify("~/.jsh-socket"));
+            const int fd = createNodeJS(mOptions.socketFile);
             if (fd == -1) {
                 printf("Unable to open connection to node\n");
                 error = true;
+            } else {
+                job->addNodeJS(token->string, fd, (token + 1 == end));
             }
-            job->addNodeJS(token->string, fd, (token + 1 == end));
             break; }
         case Shell::Token::Operator:
             job->wait();

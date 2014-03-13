@@ -25,6 +25,8 @@ public:
         Path histFile;
         List<Path> editRcFiles;
         int verbosity;
+        Path socketFile;
+        unsigned int nodeFlags;
     };
     Input(const Options &options)
         : mOptions(options), mEl(0), mIsUtf8(false), mState(Normal)
@@ -49,6 +51,7 @@ private:
     List<Shell::Token> tokenize(String line, unsigned int flags, String &error) const;
     bool expandEnvironment(String &string, String &err) const;
     void process(const List<Shell::Token> &tokens);
+    void processTokens(const List<Shell::Token>& tokens);
     void handleMessage(Message msg);
     enum CompletionResult {
         Completion_Refresh,
@@ -61,7 +64,6 @@ private:
     static void addArg(List<Shell::Token> &tokens, const char *&last, const char *str, unsigned int flags);
     static unsigned char elComplete(EditLine *el, int);
     static int getChar(EditLine *el, wchar_t *ch);
-    static void processTokens(const List<Shell::Token>& tokens);
     static bool tokensAsJavaScript(List<Shell::Token>::const_iterator& token, const List<Shell::Token>::const_iterator& end, String& out);
     bool isUtf8() const { return mIsUtf8; }
 

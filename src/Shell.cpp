@@ -156,7 +156,9 @@ int Shell::exec()
         mArgv[0],
         histFile,
         editRcFiles,
-        logLevel
+        logLevel,
+        socketFile,
+        nodeFlags
     };
 
     mInput = std::make_shared<Input>(options);
