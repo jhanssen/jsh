@@ -156,6 +156,7 @@ bool Job::addNodeJS(const String& script, int fd, int flags)
         mInPipe = fd;
         mInIsJS = true;
     }
+    mEntries.append({ Entry::Node, fd });
 
     return true;
 }

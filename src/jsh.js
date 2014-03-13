@@ -97,47 +97,47 @@ var jsh = (function() {
     function unixData(socket, data)
     {
         if (funcs[socket]) {
+            jsh.log("got data 1 " + data.length);
             funcs[socket].io._call("stdin", data.toString());
             return;
         }
+        jsh.log("hello?");
 
         console.log(data.length);
         if (socket.jshData === undefined)
             socket.jshData = data;
         else
             socket.jshData = Buffer.concat([socket.jshData, data]);
-        for (;;) {
-            if (!socket.jshPid) {
-                socket.jshPid = socket.jshData.readInt32LE(0, true);
-                if (!socket.jshPid)
-                    return;
-                console.log("pid " + socket.jshPid);
-            }
-            if (socket.jshPid && !socket.jshSize) {
-                socket.jshSize = socket.jshData.readUInt32LE(4, true);
-                if (!socket.jshSize)
-                    return;
-                console.log("size " + socket.jshSize);
-            }
-            if (socket.jshData.length - 8 >= socket.jshSize) {
-                var read = readObject(socket.jshPid, socket.jshData.slice(8, socket.jshSize + 8), socket);
-                var newLength = socket.jshData.length - (socket.jshSize + 8);
-                if (!newLength) {
-                    socket.jshData = undefined;
-                    socket.jshSize = 0;
-                    break;
-                }
-                if (read) {
-                    var tmp = new Buffer(newLength);
-                    socket.jshData.copy(tmp, 0, socket.jshSize + 8, newLength);
 
-                    funcs[socket].io._call("stdin", tmp.toString());
-                }
+        if (!socket.jshPid) {
+            socket.jshPid = socket.jshData.readInt32LE(0, true);
+            if (!socket.jshPid)
+                return;
+            console.log("pid " + socket.jshPid);
+        }
+        if (socket.jshPid && !socket.jshSize) {
+            socket.jshSize = socket.jshData.readUInt32LE(4, true);
+            if (!socket.jshSize)
+                return;
+            console.log("size " + socket.jshSize);
+        }
+        if (socket.jshData.length - 8 >= socket.jshSize) {
+            var read = readObject(socket.jshPid, socket.jshData.slice(8, socket.jshSize + 8), socket);
+            var newLength = socket.jshData.length - (socket.jshSize + 8);
+            if (!newLength) {
                 socket.jshData = undefined;
                 socket.jshSize = undefined;
-            } else {
-                break;
+                return;
             }
+            if (read) {
+                var tmp = new Buffer(newLength);
+                socket.jshData.copy(tmp, 0, socket.jshSize + 8, newLength + socket.jshSize + 8);
+
+                jsh.log("got data 2 " + data.length);
+                funcs[socket].io._call("stdin", tmp.toString());
+            }
+            socket.jshData = undefined;
+            socket.jshSize = undefined;
         }
     }
 

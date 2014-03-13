@@ -702,6 +702,7 @@ void Input::processTokens(const List<Shell::Token>& tokens)
                 printf("Unable to open connection to node\n");
                 error = true;
             } else {
+                //printf("adding connection %d ('%s')\n", fd, token->string.constData());
                 job->addNodeJS(token->string, fd, (token + 1 == end));
             }
             break; }

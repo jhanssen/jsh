@@ -13,6 +13,8 @@
 #include <errno.h>
 #include <string.h>
 #include <sys/sendfile.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
 
 class SplicerThread : public Thread
 {
@@ -88,6 +90,16 @@ void SplicerThread::run()
         const int s = ::select(max + 1, &rd, 0, 0, 0);
         if (s <= 0) {
             fprintf(stderr, "splice thread select failed %d %s\n", errno, strerror(errno));
+            if (errno == EBADF) {
+                int err;
+                socklen_t len;
+                for (const auto& it : local) {
+                    const int so = getsockopt(it.first, SOL_SOCKET, SO_ERROR, &err, &len);
+                    if (so == -1 || err) {
+                        fprintf(stderr, "bad fd? %d, so %d, errno %d (%s)\n", it.first, so, err, strerror(err));
+                    }
+                }
+            }
             return;
         }
         if (FD_ISSET(msgPipe[0], &rd)) {
@@ -112,6 +124,7 @@ void SplicerThread::run()
                 if (r > 0) {
                     ssize_t wpos = 0;
                     while (wpos < r) {
+                        //printf("splicing %d to %d size %d\n", it.first, it.second, r - wpos);
                         const ssize_t w = ::write(it.second, buf + wpos, r - wpos);
                         if (w >= 0) {
                             wpos += w;
@@ -124,9 +137,17 @@ void SplicerThread::run()
                         }
                     }
                 } else {
-                    if (it.second != STDOUT_FILENO)
-                        ::close(it.second);
                     std::unique_lock<std::mutex> locker(mutex);
+                    ::close(it.first);
+                    if (it.second != STDOUT_FILENO) {
+                        struct stat st;
+                        if (fstat(it.second, &st) || S_ISFIFO(st.st_mode)) {
+                            //printf("closing %d\n", it.second);
+                            ::close(it.second);
+                            closed(it.second);
+                            fds.erase(it.second);
+                        }
+                    }
                     if (r < 0) {
                         fprintf(stderr, "splice read failed %d (%d %s)\n", it.first, errno, strerror(errno));
                         error(Splicer::ErrorFrom, it.first, errno);
@@ -166,6 +187,7 @@ static std::once_flag spliceFlag;
 void Splicer::splice(int from, int to)
 {
     std::call_once(spliceFlag, init);
+    //printf("splicing %d -> %d\n", from, to);
     sThread->splice(from, to);
 }
 
