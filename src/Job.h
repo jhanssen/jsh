@@ -1,12 +1,13 @@
 #ifndef JOB_H
 #define JOB_H
 
-#include "NodeJS.h"
+#include "Splicer.h"
 #include <rct/Hash.h>
 #include <rct/String.h>
 #include <rct/Path.h>
 #include <rct/List.h>
 #include <rct/Thread.h>
+#include <rct/Set.h>
 #include <sys/types.h>
 #include <memory>
 #include <mutex>
@@ -35,6 +36,9 @@ public:
 private:
     void unregister(int fd);
 
+    void onClosed(int fd);
+    void onError(Splicer::ErrorType type, int fd, int err);
+
 private:
     struct Entry
     {
@@ -48,13 +52,16 @@ private:
     List<Entry>::iterator wait(List<Entry>::iterator entry);
 
     int mStdout, mInPipe;
+    bool mInIsJS;
     List<Entry> mEntries;
 
     Set<pid_t> processes;
 
     std::mutex mMutex;
     std::condition_variable mCond;
-    int mPendingJSJobs;
+    Set<int> mPendingJSJobs;
+
+    unsigned int mClosedSignal, mErrorSignal;
 
     friend class JSWaiter;
 };

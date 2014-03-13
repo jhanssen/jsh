@@ -2,6 +2,7 @@
 #include <rct/Hash.h>
 #include <rct/List.h>
 #include <rct/Thread.h>
+#include <rct/SignalSlot.h>
 #include <mutex>
 #include <condition_variable>
 #ifndef _GNU_SOURCE
@@ -16,15 +17,56 @@
 class SplicerThread : public Thread
 {
 public:
+    SplicerThread()
+    {
+        ::pipe(msgPipe);
+    }
+    ~SplicerThread()
+    {
+        ::close(msgPipe[0]);
+        ::close(msgPipe[1]);
+    }
+
     virtual void run();
 
     void splice(int from, int to);
+    unsigned int addCloseCallback(std::function<void(int)>&& cb);
+    unsigned int addErrorCallback(std::function<void(Splicer::ErrorType, int, int)>&& cb);
+    void removeCloseCallback(unsigned int id);
+    void removeErrorCallback(unsigned int id);
 
 private:
     std::mutex mutex;
     int msgPipe[2];
     Hash<int, int> fds;
+
+    Signal<std::function<void(int)> > closed;
+    Signal<std::function<void(Splicer::ErrorType, int, int)> > error;
 };
+
+unsigned int SplicerThread::addCloseCallback(std::function<void(int)>&& cb)
+{
+    std::unique_lock<std::mutex> locker(mutex);
+    return closed.connect(std::move(cb));
+}
+
+unsigned int SplicerThread::addErrorCallback(std::function<void(Splicer::ErrorType, int, int)>&& cb)
+{
+    std::unique_lock<std::mutex> locker(mutex);
+    return error.connect(std::move(cb));
+}
+
+void SplicerThread::removeCloseCallback(unsigned int id)
+{
+    std::unique_lock<std::mutex> locker(mutex);
+    closed.disconnect(id);
+}
+
+void SplicerThread::removeErrorCallback(unsigned int id)
+{
+    std::unique_lock<std::mutex> locker(mutex);
+    error.disconnect(id);
+}
 
 void SplicerThread::run()
 {
@@ -45,7 +87,7 @@ void SplicerThread::run()
         }
         const int s = ::select(max + 1, &rd, 0, 0, 0);
         if (s <= 0) {
-            fprintf(stderr, "splice thread select failed\n");
+            fprintf(stderr, "splice thread select failed %d %s\n", errno, strerror(errno));
             return;
         }
         if (FD_ISSET(msgPipe[0], &rd)) {
@@ -66,6 +108,7 @@ void SplicerThread::run()
                 //     printf("spliced %d bytes\n", spliced);
                 // }
                 const ssize_t r = ::read(it.first, buf, sizeof(buf));
+                //fprintf(stdout, "read!! %d\n", r);
                 if (r > 0) {
                     ssize_t wpos = 0;
                     while (wpos < r) {
@@ -75,6 +118,7 @@ void SplicerThread::run()
                         } else {
                             fprintf(stderr, "splice write failed %d (%d %s)\n", it.first, errno, strerror(errno));
                             std::unique_lock<std::mutex> locker(mutex);
+                            error(Splicer::ErrorTo, it.second, errno);
                             fds.erase(it.first);
                             break;
                         }
@@ -82,9 +126,14 @@ void SplicerThread::run()
                 } else {
                     if (it.second != STDOUT_FILENO)
                         ::close(it.second);
-                    if (r < 0)
-                        fprintf(stderr, "splice read failed %d (%d %s)\n", it.first, errno, strerror(errno));
                     std::unique_lock<std::mutex> locker(mutex);
+                    if (r < 0) {
+                        fprintf(stderr, "splice read failed %d (%d %s)\n", it.first, errno, strerror(errno));
+                        error(Splicer::ErrorFrom, it.first, errno);
+                    } else {
+                        assert(!r);
+                        closed(it.first);
+                    }
                     fds.erase(it.first);
                 }
             }
@@ -118,4 +167,28 @@ void Splicer::splice(int from, int to)
 {
     std::call_once(spliceFlag, init);
     sThread->splice(from, to);
+}
+
+unsigned int Splicer::addCloseCallback(std::function<void(int)>&& cb)
+{
+    std::call_once(spliceFlag, init);
+    return sThread->addCloseCallback(std::move(cb));
+}
+
+unsigned int Splicer::addErrorCallback(std::function<void(ErrorType, int, int)>&& cb)
+{
+    std::call_once(spliceFlag, init);
+    return sThread->addErrorCallback(std::move(cb));
+}
+
+void Splicer::removeCloseCallback(unsigned int id)
+{
+    std::call_once(spliceFlag, init);
+    sThread->removeCloseCallback(id);
+}
+
+void Splicer::removeErrorCallback(unsigned int id)
+{
+    std::call_once(spliceFlag, init);
+    sThread->removeErrorCallback(id);
 }
