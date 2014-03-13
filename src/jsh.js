@@ -183,7 +183,9 @@ var jsh = (function() {
             socketFile = arg.substr(14);
     }
     var server = net.createServer(unixServer);
-    fs.unlinkSync(socketFile);
+    try {
+        fs.unlinkSync(socketFile);
+    } catch(err) {}
     server.listen(socketFile);
     var rcFiles = [ "/etc/jsh.js", home + ".jshrc.js" ];
     return {

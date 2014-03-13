@@ -3,10 +3,25 @@
 #include "Input.h"
 #include "Util.h"
 #include <rct/EventLoop.h>
+#include <rct/Rct.h>
+#include <getopt.h>
 
 extern char **environ;
 
 Shell* Shell::sInstance;
+
+static inline void usage(FILE *f)
+{
+    fprintf(f,
+            "jsh [...options...]\n"
+            "  --help|-h                                  Display this page.\n"
+            "  --socket-file|-s [arg]                     Use this file for the server socket.\n"
+            "  --socket-file-template|-T [arg]            Use this template for mkstemp(3) when generating a socket-file name.\n"
+            "  --no-autostart-node-js|-a [arg]            Don't start node.js in the background.\n"
+            "  --verbose|-v                               Be more verbose.\n"
+            "  --silent|-S                                Be silent.\n"
+            "  --logfile|-l [arg]                         Log to this file.\n");
+}
 
 int Shell::exec()
 {
@@ -20,25 +35,93 @@ int Shell::exec()
     }
 
     const Path home = util::homeDirectory();
-    Path socketFile = home + "/.jsh-socket";
+    Path socketFile;
+    String socketFileTemplate = "/tmp/jsh.XXXXXX";
     unsigned int nodeFlags = NodeJS::Autostart;
-    for (int i=1; i<mArgc; ++i) {
-        const String arg(mArgv[i]);
-        if (arg == "-s" || arg == "--socket-file") {
-            if (i + 1 == mArgc) {
-                error("%s requires an argument", arg.constData());
-                return 1;
-            }
-            socketFile = mArgv[++i];
-        } else if (arg.startsWith("-s")) {
-            socketFile = arg.mid(2);
-        } else if (arg.size() > 14 && arg.startsWith("--socket-file=")) {
-            socketFile = arg.mid(14);
-        } else if (arg == "-a" || arg == "--no-autostart-node-js") {
-            nodeFlags &= ~NodeJS::Autostart;
-        } else {
-            error("Unknown argument: %s", arg.constData());
+
+    option opts[] = {
+        { "help", no_argument, 0, 'h' },
+        { "socket-file", required_argument, 0, 's' },
+        { "socket-file-template", required_argument, 0, 'T' },
+        { "no-autostart-node-js", no_argument, 0, 'a' },
+        { "verbose", no_argument, 0, 'v' },
+        { "silent", no_argument, 0, 'S' },
+        { "log-file", required_argument, 0, 'l' },
+        { 0, 0, 0, 0 }
+    };
+
+    const String shortOptions = Rct::shortOptions(opts);
+    if (getenv("JSH_DUMP_UNUSED")) {
+        String unused;
+        for (int i=0; i<26; ++i) {
+            if (!shortOptions.contains('a' + i))
+            unused.append('a' + i);
+            if (!shortOptions.contains('A' + i))
+            unused.append('A' + i);
         }
+        printf("Unused: %s\n", unused.constData());
+        for (int i=0; opts[i].name; ++i) {
+            if (opts[i].name) {
+                if (!opts[i].val) {
+                    printf("No shortoption for %s\n", opts[i].name);
+                } else if (opts[i].name[0] != opts[i].val) {
+                    printf("Not ideal option for %s|%c\n", opts[i].name, opts[i].val);
+                }
+            }
+        }
+        return 0;
+    }
+
+    int logLevel = Error;
+    Path logFile;
+
+    while (true) {
+        const int c = getopt_long(mArgc, mArgv, shortOptions.constData(), opts, 0);
+        if (c == -1)
+        break;
+        switch (c) {
+        case 'h':
+            usage(stdout);
+            return 0;
+        case 's':
+            socketFile = optarg;
+            break;
+        case 'T':
+            socketFileTemplate = optarg;
+            break;
+        case 'a':
+            nodeFlags &= ~NodeJS::Autostart;
+            break;
+        case 'v':
+            if (logLevel >= 0)
+                ++logLevel;
+            break;
+        case 'S':
+            logLevel = -1;
+            break;
+        case 'l':
+            logFile = optarg;
+            break;
+        case '?': {
+            fprintf(stderr, "Run jsh --help for help\n");
+            return 1; }
+        }
+    }
+
+    if (!initLogging(mArgv[0], LogStderr, logLevel, logFile, 0)) {
+        fprintf(stderr, "Can't initialize logging with %d %s\n",
+                logLevel, logFile.constData());
+        return 1;
+    }
+
+    if (socketFile.isEmpty()) {
+        const int f = mkstemp(socketFileTemplate.data());
+        if (f == -1) {
+            error() << "Error generating temp file" << strerror(errno);
+            return 1;
+        }
+        close(f);
+        socketFile = socketFileTemplate;
     }
 
     mEventLoop = std::make_shared<EventLoop>();

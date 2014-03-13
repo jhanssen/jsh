@@ -13,6 +13,7 @@ NodeJS::~NodeJS()
         mNodeProcess->kill();
         delete mNodeProcess;
     }
+    Path::rm(mSocketFile);
 }
 
 bool NodeJS::init(const Path &socketFile, unsigned int flags)
@@ -23,6 +24,10 @@ bool NodeJS::init(const Path &socketFile, unsigned int flags)
         mNodeProcess = new Process;
         List<String> args;
         args << JSH_DOT_JS << String::format<128>("--socket-file=%s", socketFile.constData());
+        mNodeProcess->readyReadStdErr().connect([](Process *proc) {
+                error() << "nodejs stderr" << proc->readAllStdErr();
+            });
+
         if (!mNodeProcess->start("node", args) && !mNodeProcess->start("nodejs", args)) {
             error("Can't launch nodejs %s", mNodeProcess->errorString().constData());
             delete mNodeProcess;
