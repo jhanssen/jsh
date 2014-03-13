@@ -1,4 +1,5 @@
 var net = require('net');
+var fs = require('fs');
 var cmd = undefined;
 var funcs = {};
 var pendingClosed = [];
@@ -7,6 +8,32 @@ var pidPad = "00000000000000000000";
 function writePid(pid) {
     var str = "" + pid;
     cmd.write(pidPad.substring(0, pidPad.length - str.length) + str);
+}
+
+var logFile = fs.openSync("nodejs.log", 'w');
+function log()
+{
+    if (logFile) {
+        var t = "";
+        for (var i=0; i<arguments.length; ++i) {
+            if (t.length)
+                t += ' ';
+            if (typeof arguments[i] !== 'string') {
+                try {
+                    t += JSON.stringify(arguments[i]);
+                } catch (err) {
+                    t += arguments[i];
+                }
+            } else {
+                t += arguments[i];
+            }
+        }
+        if (t.length) {
+            if (t[t.length - 1] != '\n')
+                t += '\n';
+            fs.write(logFile, new Buffer(t), 0, t.length);
+        }
+    }
 }
 
 function readObject(pid, obj, socket)
