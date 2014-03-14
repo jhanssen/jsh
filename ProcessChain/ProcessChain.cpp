@@ -1,5 +1,4 @@
 #include "ProcessChain.h"
-#include <set>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,18 +28,31 @@ void ProcessChain::init(Handle<Object> target)
     constructor->SetClassName(name);
 
     NODE_SET_PROTOTYPE_METHOD(constructor, "chain", chain);
-    NODE_SET_PROTOTYPE_METHOD(constructor, "exec", exec);
+    NODE_SET_PROTOTYPE_METHOD(constructor, "write", write);
+    NODE_SET_PROTOTYPE_METHOD(constructor, "end", end);
 
     target->Set(name, constructor->GetFunction());
 }
 
 ProcessChain::ProcessChain()
-    : ObjectWrap()
+    : ObjectWrap(), mLaunched(false)
 {
+    mFinalPipe[0] = mFinalPipe[1] -1;
+    mInPipe[0] = mInPipe[1] -1;
+}
+
+static inline void closePipe(int* pipe)
+{
+    if (*pipe != -1)
+        ::close(*pipe);
+    if (*(pipe + 1) != -1)
+        ::close(*(pipe + 1));
 }
 
 ProcessChain::~ProcessChain()
 {
+    closePipe(mFinalPipe);
+    closePipe(mInPipe);
 }
 
 Handle<Value> ProcessChain::New(const Arguments& args)
@@ -61,48 +73,38 @@ Handle<Value> ProcessChain::New(const Arguments& args)
     return args.This();
 }
 
-Handle<Value> ProcessChain::exec(const Arguments& args)
+bool ProcessChain::launch()
 {
+    if (mLaunched)
+        return true;
+
     HandleScope scope;
 
-    if (args.Length() != 1) {
-        return ThrowException(Exception::TypeError(String::New("ProcessChain.exec takes a callback argument")));
+    if (::pipe(mFinalPipe)) {
+        return false;
+    }
+    if (::pipe(mInPipe)) {
+        return false;
     }
 
-    Handle<Value> execArg = args[0];
-    if (execArg.IsEmpty() || !execArg->IsFunction()) {
-        return ThrowException(Exception::TypeError(String::New("ProcessChain.exec takes a callback argument")));
-    }
-
-    Handle<Function> callback = Handle<Function>::Cast(execArg);
-
-    ProcessChain* obj = ObjectWrap::Unwrap<ProcessChain>(args.This());
-
-    // set up an stdout pipe
-    int finalPipe[2];
-    if (::pipe(finalPipe)) {
-        return ThrowException(Exception::TypeError(String::New("ProcessChain.exec pipe 1 failed")));
-    }
-
-    std::set<pid_t> pids;
     int stdoutPipe[2];
-    int stdinFd = STDIN_FILENO;
-    auto entry = obj->mEntries.cbegin();
-    const auto end = obj->mEntries.cend();
+    int stdinFd = mInPipe[0];
+    auto entry = mEntries.cbegin();
+    const auto end = mEntries.cend();
     while (entry != end) {
         const bool last = (entry + 1 == end);
         if (!last) {
             ::pipe(stdoutPipe);
         } else {
-            stdoutPipe[0] = finalPipe[0];
-            stdoutPipe[1] = finalPipe[1];
+            stdoutPipe[0] = mFinalPipe[0];
+            stdoutPipe[1] = mFinalPipe[1];
         }
 
         const pid_t pid = ::fork();
         switch (pid) {
         case -1:
             // something horrible has happened
-            return ThrowException(Exception::TypeError(String::New("ProcessChain.exec fork failed")));
+            return false;
         case 0: {
             // child
             const size_t asz = entry->arguments.size();
@@ -121,10 +123,13 @@ Handle<Value> ProcessChain::exec(const Arguments& args)
             }
 
             // dups
-            if (stdinFd != STDIN_FILENO) {
-                ::dup2(stdinFd, STDIN_FILENO);
-                ::close(stdinFd);
+            ::dup2(stdinFd, STDIN_FILENO);
+            if (stdinFd != mInPipe[0]) {
+                ::close(mInPipe[0]);
             }
+            ::close(mInPipe[1]);
+            ::close(stdinFd);
+
             ::close(stdoutPipe[0]);
             ::dup2(stdoutPipe[1], STDOUT_FILENO);
             ::close(stdoutPipe[1]);
@@ -144,19 +149,81 @@ Handle<Value> ProcessChain::exec(const Arguments& args)
             ::close(stdoutPipe[1]);
             stdinFd = stdoutPipe[0];
 
-            pids.insert(pid);
+            mPids.insert(pid);
 
             break; }
         }
         ++entry;
     }
 
-    if (pids.empty()) {
+    ::close(mInPipe[0]);
+    ::close(mFinalPipe[1]);
+    mInPipe[0] = -1;
+    mFinalPipe[1] = -1;
+    mLaunched = true;
+    return true;
+}
+
+Handle<Value> ProcessChain::write(const Arguments& args)
+{
+    HandleScope scope;
+
+    ProcessChain* obj = ObjectWrap::Unwrap<ProcessChain>(args.This());
+
+    if (args.Length() == 0) {
+        return ThrowException(Exception::TypeError(String::New("ProcessChain.write requires at least one string argument.")));
+    }
+
+    if (!obj->mLaunched && !obj->launch()) {
+        return ThrowException(Exception::TypeError(String::New("ProcessChain.write launch failed.")));
+    }
+
+    for (int i = 0; i < args.Length(); ++i) {
+        if (args[i].IsEmpty() || !args[i]->IsString()) {
+            return ThrowException(Exception::TypeError(String::New("ProcessChain.write only takes string arguments.")));
+        }
+        String::Utf8Value val(args[i]);
+        int rem = val.length();
+        int pos = 0;
+        while (rem) {
+            const int w = ::write(obj->mInPipe[1], *val + pos, rem);
+            if (w <= 0) {
+                return ThrowException(Exception::TypeError(String::New("ProcessChain.write ::write failed.")));
+            }
+            pos += w;
+            rem -= w;
+        }
+    }
+
+    return args.Holder();
+}
+
+Handle<Value> ProcessChain::end(const Arguments& args)
+{
+    HandleScope scope;
+
+    if (args.Length() != 1) {
+        return ThrowException(Exception::TypeError(String::New("ProcessChain.end takes a callback argument")));
+    }
+    if (args[0].IsEmpty() || !args[0]->IsFunction()) {
+        return ThrowException(Exception::TypeError(String::New("ProcessChain.end takes a callback argument")));
+    }
+    Handle<Function> callback = Handle<Function>::Cast(args[0]);
+
+    ProcessChain* obj = ObjectWrap::Unwrap<ProcessChain>(args.This());
+    if (!obj->mLaunched && !obj->launch()) {
+        return ThrowException(Exception::TypeError(String::New("ProcessChain.write launch failed.")));
+    }
+    obj->mLaunched = false;
+    ::close(obj->mInPipe[1]);
+    obj->mInPipe[1] = -1;
+
+    if (obj->mPids.empty()) {
         // no processes started
         return Undefined();
     }
 
-    const int outfd = finalPipe[0];
+    const int outfd = obj->mFinalPipe[0];
 
     // select
     fd_set rd;
@@ -187,14 +254,17 @@ Handle<Value> ProcessChain::exec(const Arguments& args)
         }
     }
 
+    ::close(obj->mFinalPipe[0]);
+    obj->mFinalPipe[0] = -1;
+
     // wait for pids and join
     for (;;) {
         int status;
         pid_t pid;
         eintrwrap(pid, waitpid(WAIT_ANY, &status, WUNTRACED));
         if (pid > 0) {
-            pids.erase(pid);
-            if (pids.empty())
+            obj->mPids.erase(pid);
+            if (obj->mPids.empty())
                 break;
         } else {
             return ThrowException(Exception::TypeError(String::New("ProcessChain.exec waitpid failed")));
