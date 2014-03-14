@@ -868,5 +868,21 @@ void Input::launchNode()
         mNodeProcess = 0;
     } else {
         mNodeProcess->closeStdIn();
+        mNodePingTimer.restart(30000); // ### configurable?
     }
+}
+
+void Input::pingNode(Timer *)
+{
+    if (mNodeFD == -1) {
+        mNodeFD = createNodeJS(mOptions.socketFile);
+        if (mNodeFD == -1)
+            return;
+    }
+    NodeConnection connection(mNodeFD);
+    if (!connection.send() || !connection.send(String()) {
+        fprintf(stderr, "unable to write script to node (%d)\n", script.size());
+        return false;
+    }
+
 }

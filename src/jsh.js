@@ -104,9 +104,9 @@ var jsh = (function() {
         jsh.log("hello?");
 
         console.log(data.length);
-        if (socket.jshData === undefined)
+        if (socket.jshData === undefined) {
             socket.jshData = data;
-        else
+        } else {
             socket.jshData = Buffer.concat([socket.jshData, data]);
 
         if (!socket.jshPid) {

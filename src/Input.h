@@ -35,7 +35,7 @@ public:
         unsigned int flags;
     };
     Input(const Options &options)
-        : mOptions(options), mEl(0), mIsUtf8(false), mState(Normal), mNodeProcess(0)
+        : mOptions(options), mEl(0), mIsUtf8(false), mState(Normal), mNodeProcess(0), mNodeFD(-1)
     {
         if (options.flags & AutostartNodeJS)
             launchNode();
@@ -60,6 +60,7 @@ public:
     void sendMessage(Message msg);
 
 private:
+    void pingNode(Timer *);
     enum TokenizeFlag {
         Tokenize_None = 0x0,
         Tokenize_CollapseWhitespace = 0x1,
@@ -108,6 +109,8 @@ private:
     } mState;
 
     Process *mNodeProcess;
+    Timer mNodePingTimer;
+    int mNodeFD;
 };
 
 #endif
