@@ -866,5 +866,7 @@ void Input::launchNode()
         error("Can't launch nodejs %s", mNodeProcess->errorString().constData());
         delete mNodeProcess;
         mNodeProcess = 0;
+    } else {
+        mNodeProcess->closeStdIn();
     }
 }
