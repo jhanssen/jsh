@@ -17,8 +17,12 @@ rl.loadHistory = function loadHistory(file) {
 rl.saveHistory = function saveHistory(file) {
     var histFile = (process.env.HOME || process.env.HOMEPATH || process.env.USERPROFILE) + "/" + file;
     try {
-        fs.writeFileSync(histFile, this.history.join("\n"));
-    } catch (err) { }
+        var history = this.history.reverse().join("\n");
+        if (history.length)
+            history += '\n';
+        fs.writeFileSync(histFile, history);
+    } catch (err) {
+    }
 }
 
 rl.clearScreen = function clearScreen() {
@@ -26,13 +30,13 @@ rl.clearScreen = function clearScreen() {
     this.prompt(true);
 };
 
-rl.updateInteractiveHistorySearch = function updateInteractiveHistorySearch(term, idx) {
-    this.interactiveHistoryIndex = idx;
-    var prompt = "(reverse-i-search)`" + term + "': ";
-    if (term && this.history.length) {
+rl.updateInteractiveSearch = function updateInteractiveSearch() {
+    var prompt = "(reverse-i-search)`" + this.interactiveSearchTerm + "': ";
+    if (this.interactiveSearchTerm && this.history.length) {
         var historyIndex = this.history.length - 1;
+        var idx = this.interactiveIndex;
         while (idx-- > 0) {
-            while (historyIndex >= 0 && this.history[historyIndex].indexOf(term) == -1)
+            while (historyIndex >= 0 && this.history[historyIndex].indexOf(this.interactiveSearchTerm) == -1)
                 --historyIndex;
             if (historyIndex >= 0) {
                 prompt += this.history[historyIndex];
@@ -40,12 +44,17 @@ rl.updateInteractiveHistorySearch = function updateInteractiveHistorySearch(term
         }
     }
     this.setPrompt(prompt);
+    this.clearLine(this, 0);
     this.prompt(true);
 };
 rl.historySearchBackward = function historySearchBackward() {
-    var preserve = true;
-    if (this.interactiveHistoryIndex === undefined) {
-        this.updateInteractiveHistorySearch("", 1);
+    if (this.interactiveIndex === undefined) {
+        this.interactiveIndex = 1;
+        this.interactiveSearchTerm = "";
+        this.updateInteractiveSearch();
+    } else {
+        ++this.interactiveIndex;
+        this.updateInteractiveSearch();
     }
 };
 
@@ -60,8 +69,13 @@ rl.prompt();
 
 
 rl.on('line', function(line) {
+    if (rl.interactiveIndex !== undefined)
+        return;
     rl.saveHistory(".jsh_history");
     switch(line.trim()) {
+    case 'h':
+        console.dir(rl.history);
+        break;
     case 'hello':
         console.dir(rl);
         // rl.write('Delete me!');
@@ -84,11 +98,23 @@ rl.on('line', function(line) {
 
 
 process.stdin.on('keypress', function (s, key) { // ctrl-l
+    // console.dir(s);
+    // console.dir(key);
+    key = key || {};
     if (key.ctrl) {
         switch (key.name) {
         case 'l': rl.clearScreen(); break;
         case 'r': rl.historySearchBackward(); break;
         case 's': rl.historySearchForward(); break;
+        }
+    }
+    if (!key.ctrl && !key.meta && rl.interactiveIndex !== undefined) {
+        if (key.name == "backspace" && rl.interactiveSearchTerm.length > 0) {
+            --rl.interactiveSearchTerm.length;
+            rl.updateInteractiveSearch();
+        } else if (s.length == 1) {
+            rl.interactiveSearchTerm += s;
+            rl.updateInteractiveSearch();
         }
     }
 });
