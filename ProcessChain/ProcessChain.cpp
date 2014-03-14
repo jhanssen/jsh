@@ -113,6 +113,13 @@ Handle<Value> ProcessChain::exec(const Arguments& args)
                 args[i] = entry->arguments[i - 1].c_str();
             }
 
+            const size_t esz = entry->environment.size();
+            const char* env[esz + 1];
+            env[esz] = 0;
+            for (size_t i = 0; i < esz; ++i) {
+                env[i] = entry->environment[i].c_str();
+            }
+
             // dups
             if (stdinFd != STDIN_FILENO) {
                 ::dup2(stdinFd, STDIN_FILENO);
@@ -122,7 +129,14 @@ Handle<Value> ProcessChain::exec(const Arguments& args)
             ::dup2(stdoutPipe[1], STDOUT_FILENO);
             ::close(stdoutPipe[1]);
 
-            ::execv(entry->program.c_str(), const_cast<char* const*>(args));
+            if (!entry->cwd.empty()) {
+                ::chdir(entry->cwd.c_str());
+            }
+
+            if (entry->environment.empty())
+                ::execv(entry->program.c_str(), const_cast<char* const*>(args));
+            else
+                ::execve(entry->program.c_str(), const_cast<char* const*>(args), const_cast<char* const*>(env));
             _exit(1);
             break; }
         default: {
@@ -202,11 +216,19 @@ Handle<Value> ProcessChain::chain(const Arguments& args)
     Handle<Object> arg = Handle<Object>::Cast(args[0]);
     Handle<Value> program = arg->Get(String::New("program"));
     Handle<Value> arguments = arg->Get(String::New("arguments"));
+    Handle<Value> environment = arg->Get(String::New("environment"));
+    Handle<Value> cwd = arg->Get(String::New("cwd"));
     if (program.IsEmpty() || !program->IsString()) {
         return ThrowException(Exception::TypeError(String::New("ProcessChain.chain() requires a program argument.")));
     }
-    if (arguments.IsEmpty() || !arguments->IsArray()) {
-        return ThrowException(Exception::TypeError(String::New("ProcessChain.chain() requires an arguments argument.")));
+    if (!arguments.IsEmpty() && !arguments->IsUndefined() && !arguments->IsArray()) {
+        return ThrowException(Exception::TypeError(String::New("ProcessChain.chain() arguments needs to be an array")));
+    }
+    if (!environment.IsEmpty() && !environment->IsUndefined() && !environment->IsArray()) {
+        return ThrowException(Exception::TypeError(String::New("ProcessChain.chain() environment needs to be an array")));
+    }
+    if (!cwd.IsEmpty() && !cwd->IsUndefined() && !cwd->IsString()) {
+        return ThrowException(Exception::TypeError(String::New("ProcessChain.chain() cwd needs to be a string")));
     }
 
     obj->mEntries.push_back(Entry());
@@ -217,15 +239,34 @@ Handle<Value> ProcessChain::chain(const Arguments& args)
         if (prog.length() > 0)
             entry.program = *prog;
     }
-    Handle<Array> argarray = Handle<Array>::Cast(arguments);
-    for (uint32_t i = 0; i < argarray->Length(); ++i) {
-        Handle<Value> arg = argarray->Get(i);
-        if (arg.IsEmpty() || !arg->IsString()) {
-            return ThrowException(Exception::TypeError(String::New("All arguments in ProcessChain.chain() need to be strings.")));
+    if (!cwd.IsEmpty() && !cwd->IsUndefined() && !cwd.IsEmpty()) {
+        String::Utf8Value dir(cwd);
+        if (dir.length() > 0)
+            entry.cwd = *dir;
+    }
+    if (!arguments.IsEmpty() && arguments->IsArray()) {
+        Handle<Array> argarray = Handle<Array>::Cast(arguments);
+        for (uint32_t i = 0; i < argarray->Length(); ++i) {
+            Handle<Value> arg = argarray->Get(i);
+            if (arg.IsEmpty() || !arg->IsString()) {
+                return ThrowException(Exception::TypeError(String::New("All arguments in ProcessChain.chain() need to be strings.")));
+            }
+            String::Utf8Value a(arg);
+            if (a.length() > 0)
+                entry.arguments.push_back(*a);
         }
-        String::Utf8Value a(arg);
-        if (a.length() > 0)
-            entry.arguments.push_back(*a);
+    }
+    if (!environment.IsEmpty() && environment->IsArray()) {
+        Handle<Array> envarray = Handle<Array>::Cast(environment);
+        for (uint32_t i = 0; i < envarray->Length(); ++i) {
+            Handle<Value> arg = envarray->Get(i);
+            if (arg.IsEmpty() || !arg->IsString()) {
+                return ThrowException(Exception::TypeError(String::New("All environment variables in ProcessChain.chain() need to be strings.")));
+            }
+            String::Utf8Value a(arg);
+            if (a.length() > 0)
+                entry.environment.push_back(*a);
+        }
     }
 
     //return scope.Close(Integer::New(value));

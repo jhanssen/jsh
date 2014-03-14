@@ -11,8 +11,8 @@ public:
     static void init(v8::Handle<v8::Object> target);
 
     struct Entry {
-        std::string program;
-        std::vector<std::string> arguments;
+        std::string program, cwd;
+        std::vector<std::string> arguments, environment;
     };
 
 private:
