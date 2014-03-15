@@ -1,5 +1,6 @@
 .ninja*
 cmake*
+.gdb_history
 CMakeFiles
 CMakeCache.txt
 rules.ninja
@@ -7,3 +8,5 @@ build.ninja
 jsh
 /src/.gdb_history
 /nodejs.log
+src/node_modules/ProcessChain/build
+src/node_modules/ProcessChain/Makefile
