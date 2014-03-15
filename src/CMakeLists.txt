@@ -41,7 +41,9 @@ if (CMAKE_SYSTEM_NAME MATCHES "Darwin")
   set(SYSTEM_LIBS iconv)
 endif ()
 
-add_executable(jsh ${CLIENT_SOURCES})
-target_link_libraries(jsh pthread rct edit termcap ${V8_BASE_LIB} ${V8_NOSNAPSHOT_LIB} ${SYSTEM_LIBS} icui18n icuuc icudata)
+add_subdirectory(node_modules)
+
+# add_executable(jsh ${CLIENT_SOURCES})
+# target_link_libraries(jsh pthread rct edit termcap ${V8_BASE_LIB} ${V8_NOSNAPSHOT_LIB} ${SYSTEM_LIBS} icui18n icuuc icudata)
 
 #add_dependencies(jsh v8)
