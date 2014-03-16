@@ -6,5 +6,5 @@ var read = new rl.ReadLine(function(data) {
         read.cleanup();
         process.exit();
     }
-    console.log("got " + data);
+    console.log("got '" + data + "'");
 });
