@@ -2,6 +2,8 @@ var rl = require('ReadLine');
 var pc = require('ProcessChain');
 var Job = require('Job');
 var Tokenizer = require('Tokenizer');
+var jsh = require('jsh');
+var jshNative = new jsh.native.jsh();
 
 function maybeJavaScript(token)
 {
@@ -202,6 +204,7 @@ function runLine(line)
 var read = new rl.ReadLine(function(data) {
     if (data === undefined) {
         read.cleanup();
+        jshNative.cleanup();
         process.exit();
     }
 
