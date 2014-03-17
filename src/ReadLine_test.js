@@ -1,216 +1,18 @@
 var rl = require('ReadLine');
 var pc = require('ProcessChain');
 var Job = require('Job');
-
-function Tokenizer()
-{
-}
-
-Tokenizer.prototype._line = undefined;
-Tokenizer.prototype._pos = undefined;
-Tokenizer.prototype._prev = undefined;
-Tokenizer.prototype._state = {
-    state: [],
-    push: function(s) { this.state.push(s); },
-    pop: function() { return this.state.pop(); },
-    value: function() {
-        if (this.state.length === 0)
-            throw("state length is 0");
-        return this.state[this.state.length - 1];
-    },
-    prev: function() {
-        if (this.state.length === 0)
-            throw("state length is 0");
-        if (this.state.length === 1)
-            return undefined;
-        return this.state[this.state.length - 2];
-    },
-    count: function(s) {
-        if (this.state.length === 0)
-            throw("state length is 0");
-        var pos = this.state.length - 1;
-        var cnt = 0;
-        while (pos >= 0) {
-            if (this.state[pos] !== s)
-                return cnt;
-            --pos;
-            ++cnt;
-        }
-        return cnt;
-    },
-    is: function() {
-        for (var i in arguments) {
-            if (this.value() === arguments[i])
-                return true;
-        }
-        return false;
-    }
-};
-
-Tokenizer.prototype.NORMAL = 0;
-Tokenizer.prototype.QUOTE = 1;
-Tokenizer.prototype.SINGLEQUOTE = 2;
-Tokenizer.prototype.BRACE = 3;
-Tokenizer.prototype.PAREN = 4;
-
-Tokenizer.prototype.HIDDEN = 0;
-Tokenizer.prototype.OPERATOR = 1;
-Tokenizer.prototype.COMMAND = 2;
-Tokenizer.prototype.JAVASCRIPT = 3;
-Tokenizer.prototype.GROUP = 4;
-
-Tokenizer.prototype.tokenize = function(line)
-{
-    this._line = line;
-    this._pos = this._prev = 0;
-    this._state.push(Tokenizer.prototype.NORMAL);
-};
-
-Tokenizer.prototype._addPrev = function(type, entry)
-{
-    if (this._pos > this._prev)
-        entry.push({ type: type, data: this._line.substr(this._prev, this._pos - this._prev)});
-    this._prev = this._pos + 1;
-};
-
-Tokenizer.prototype._addOperator = function(entry)
-{
-    var op = this._line[this._pos];
-    var len = 1;
-    if (this._pos + 1 < this._line.length && this._line[this._pos + 1] === op) {
-        len = 2;
-    }
-    entry.push({ type: this.OPERATOR, data: this._line.substr(this._pos, len) });
-    if (len === 2)
-        ++this._pos;
-    this._prev = this._pos + 1;
-    return len;
-};
-
-Tokenizer.prototype._addHidden = function(entry, data)
-{
-    entry.push({ type: this.HIDDEN, data: data });
-};
-
-Tokenizer.prototype.next = function()
-{
-    var entry = [], len, ch, st;
-
-    var done = false;
-    this._prev = this._pos;
-    var start = this._prev;
-    while (!done && this._pos < this._line.length) {
-        ch = this._line[this._pos];
-        switch (ch) {
-        case '"':
-            if (this._state.value() === this.NORMAL) {
-                this._addPrev(this.COMMAND, entry);
-                this._addHidden(entry, "'");
-                this._state.push(this.QUOTE);
-            } else if (this._state.value() === this.QUOTE) {
-                this._addPrev(this.COMMAND, entry);
-                this._addHidden(entry, "'");
-                this._state.pop();
-            }
-            break;
-        case '\'':
-            if (this._state.value() === this.NORMAL) {
-                this._addPrev(this.COMMAND, entry);
-                this._addHidden(entry, "'");
-                this._state.push(this.SINGLEQUOTE);
-            } else if (this._state.value() === this.SINGLEQUOTE) {
-                this._addPrev(this.COMMAND, entry);
-                this._addHidden(entry, "'");
-                this._state.pop();
-            }
-            break;
-        case '{':
-        case '(':
-            st = (ch === '{' ? this.BRACE : this.PAREN);
-            if (this._state.is(this.NORMAL, st)) {
-                if (this._state.is(this.NORMAL)) {
-                    this._addPrev(this.COMMAND, entry);
-                    if (entry.length !== 0)
-                        return entry;
-                }
-                this._state.push(st);
-            }
-            break;
-        case '}':
-        case ')':
-            st = (ch === '}' ? this.BRACE : this.PAREN);
-            if (this._state.value() === st) {
-                if (this._state.prev() === this.NORMAL) {
-                    this._addPrev((st === this.BRACE) ? this.JAVASCRIPT : this.GROUP, entry);
-                    if (st === this.BRACE)
-                        done = true;
-                }
-                this._state.pop();
-            }
-            break;
-        case ';':
-            if (this._state.value() === this.NORMAL) {
-                this._addPrev(this.COMMAND, entry);
-                this._addHidden(entry, ';');
-                done = true;
-            }
-            break;
-        case ' ':
-            if (this._state.value() === this.NORMAL) {
-                this._addPrev(this.COMMAND, entry);
-            }
-            break;
-        case '|':
-            if (this._state.value() === this.NORMAL) {
-                this._addPrev(this.COMMAND, entry);
-                this._addOperator(entry);
-                done = true;
-            }
-            break;
-        case '&':
-            if (this._state.value() === this.NORMAL) {
-                this._addPrev(this.COMMAND, entry);
-                if (this._addOperator(entry) === 2) // &&
-                    done = true;
-            }
-            break;
-        case '>':
-        case '<':
-        case '=':
-        case ',':
-            if (this._state.value() === this.NORMAL) {
-                this._addPrev(this.COMMAND, entry);
-                this._addOperator(entry);
-            }
-            break;
-        }
-        ++this._pos;
-    }
-
-    if (this._state.value() !== this.NORMAL) {
-        throw "Tokenizer didn't end in normal state";
-    }
-
-    this._addPrev(this.COMMAND, entry);
-    if (entry.length > 0) {
-        var e = entry[entry.length - 1];
-        if (e.type !== this.OPERATOR && e.data !== ";")
-            entry.push({ type: this.HIDDEN, data: ";" });
-    }
-
-    return entry.length === 0 ? undefined : entry;
-};
+var Tokenizer = require('Tokenizer');
 
 function maybeJavaScript(token)
 {
-    if (token[0].type === Tokenizer.prototype.GROUP) {
+    if (token[0].type === Tokenizer.GROUP) {
         return false;
-    } else if (token[0].type === Tokenizer.prototype.JAVASCRIPT) {
+    } else if (token[0].type === Tokenizer.JAVASCRIPT) {
         if (token.length !== 1) {
             throw "Unexpected JS token length: " + token.length;
         }
         return true;
-    } else if (token[0].type === Tokenizer.prototype.COMMAND) {
+    } else if (token[0].type === Tokenizer.COMMAND) {
         // Check if the first token is an existing function
 
         var list = token[0].data.split('.');
@@ -232,7 +34,7 @@ function runJavaScript(token, job)
     var state = 0;
     var cnt = 0;
 
-    if (token[0].type !== Tokenizer.prototype.JAVASCRIPT) {
+    if (token[0].type !== Tokenizer.JAVASCRIPT) {
         var hasParen = token.length > 1 && token[1].data === '(';
 
         for (var i in token) {
@@ -288,9 +90,9 @@ function operator(token)
     if (token.length === 0)
         return undefined;
     var tok = token[token.length - 1];
-    if (tok.type === Tokenizer.prototype.OPERATOR)
+    if (tok.type === Tokenizer.OPERATOR)
         return tok.data;
-    else if (tok.type === Tokenizer.prototype.HIDDEN && tok.data === ";")
+    else if (tok.type === Tokenizer.HIDDEN && tok.data === ";")
         return tok.data;
     return undefined;
 }
@@ -320,7 +122,7 @@ function runLine(line)
 
     var op, ret, job;
 
-    var tok = new Tokenizer(), token;
+    var tok = new Tokenizer.Tokenizer(), token;
     tok.tokenize(line);
     while ((token = tok.next())) {
         console.log("----");
