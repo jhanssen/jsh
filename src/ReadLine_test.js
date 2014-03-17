@@ -1,5 +1,6 @@
 var rl = require('ReadLine');
 var pc = require('ProcessChain');
+var Job = require('Job');
 
 function Tokenizer()
 {
@@ -225,7 +226,7 @@ function maybeJavaScript(token)
     return false;
 }
 
-function runJavaScript(token)
+function runJavaScript(token, job)
 {
     var func = "";
     var state = 0;
@@ -233,9 +234,6 @@ function runJavaScript(token)
 
     if (token[0].type !== Tokenizer.prototype.JAVASCRIPT) {
         var hasParen = token.length > 1 && token[1].data === '(';
-        if (token.length > 1 && (token[token.length - 1].type === Tokenizer.prototype.OPERATOR || token[token.length - 1].data === ";")) {
-            token.pop();
-        }
 
         for (var i in token) {
             if (!func) {
@@ -270,8 +268,19 @@ function runJavaScript(token)
         }
     }
 
-    console.log("evaling " + func);
-    eval.call(global, func);
+    if (job) {
+        var jobfunc = undefined;
+        try {
+            jobfunc = eval("(function(data) {" + func + "})");
+        } catch (e) {
+        }
+        if (typeof jobfunc === "function") {
+            job.js(new Job.JavaScript(jobfunc));
+        }
+    } else {
+        console.log("evaling " + func);
+        eval.call(global, func);
+    }
 }
 
 function operator(token)
@@ -309,7 +318,7 @@ function runLine(line)
     if (isjs)
         return;
 
-    var op, ret;
+    var op, ret, job;
 
     var tok = new Tokenizer(), token;
     tok.tokenize(line);
@@ -319,7 +328,17 @@ function runLine(line)
         if (op === undefined) {
             throw "Unrecognized operator";
         }
+        // remove the operator
+        token.pop();
+
         console.log("operator " + op);
+        if (op === '|') {
+            if (!job) {
+                job = new Job.Job();
+            }
+        } else if (op !== ';' && job) {
+            throw "Invalid operator for pipe job";
+        }
         for (var i in token) {
             console.log("  token " + token[i].type + " '" + token[i].data + "'");
         }
@@ -346,9 +365,6 @@ function runLine(line)
                 return;
         }
 
-        if (token[token.length - 1].type === Tokenizer.prototype.OPERATOR || token[token.length - 1].data === ";") {
-            token.pop();
-        }
         console.log("  is a command");
         var cmd = undefined;
         var args = [];
@@ -361,15 +377,23 @@ function runLine(line)
         }
         if (cmd !== undefined) {
             console.log("execing cmd " + cmd);
-            var proc = new pc.ProcessChain();
-            proc.chain({ program: cmd, arguments: args });
-            ret = proc.end(console.log);
-            console.log("got " + ret);
-            if (matchOperator(op, !ret))
-                continue;
-            else
-                return;
+            if (job) {
+                job.proc({ program: cmd, arguments: args });
+            } else {
+                var proc = new pc.ProcessChain();
+                proc.chain({ program: cmd, arguments: args });
+                ret = proc.end(console.log);
+                console.log("got " + ret);
+                if (matchOperator(op, !ret))
+                    continue;
+                else
+                    return;
+            }
         }
+    }
+    if (job) {
+        console.log("running job");
+        job.exec(console.log);
     }
 }
 
