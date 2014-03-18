@@ -3,7 +3,9 @@ var pc = require('ProcessChain');
 var Job = require('Job');
 var Tokenizer = require('Tokenizer');
 var jsh = require('jsh');
-var jshNative = new jsh.native.jsh();
+global.jsh = {
+    jshNative: new jsh.native.jsh()
+};
 
 function maybeJavaScript(token)
 {
@@ -157,7 +159,7 @@ function runLine(line)
             console.log("    might be js");
             iscmd = false;
             try {
-                ret = runJavaScript(token);
+                ret = runJavaScript(token, job);
             } catch (e) {
                 ret = false;
             }
@@ -184,7 +186,7 @@ function runLine(line)
             if (job) {
                 job.proc({ program: cmd, arguments: args });
             } else {
-                var proc = new pc.ProcessChain(jshNative);
+                var proc = new pc.ProcessChain(global.jsh.jshNative);
                 proc.chain({ program: cmd, arguments: args });
                 ret = proc.end(console.log);
                 console.log("got " + ret);
@@ -204,7 +206,7 @@ function runLine(line)
 var read = new rl.ReadLine(function(data) {
     if (data === undefined) {
         read.cleanup();
-        jshNative.cleanup();
+        global.jsh.jshNative.cleanup();
         process.exit();
     }
 
