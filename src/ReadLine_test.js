@@ -148,7 +148,7 @@ function runLine(line)
         }
 
         var iscmd = true;
-        if (token.length >= 1 && token[0].type === tok.GROUP) {
+        if (token.length >= 1 && token[0].type === Tokenizer.GROUP) {
             console.log("    is a group");
             // run the group
             ret = runLine(token[0].data);
@@ -175,7 +175,7 @@ function runLine(line)
         for (var i in token) {
             if (cmd === undefined) {
                 cmd = token[i].data;
-            } else if (token[i].type !== tok.HIDDEN) {
+            } else if (token[i].type !== Tokenizer.HIDDEN) {
                 args.push(token[i].data);
             }
         }
