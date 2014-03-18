@@ -109,6 +109,8 @@ function matchOperator(op, ret)
         return true;
     else if (op === '||' && !ret)
         return true;
+    else if (op === '|')
+        return true;
     return false;
 }
 
