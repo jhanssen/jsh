@@ -184,7 +184,7 @@ function runLine(line)
             if (job) {
                 job.proc({ program: cmd, arguments: args });
             } else {
-                var proc = new pc.ProcessChain();
+                var proc = new pc.ProcessChain(jshNative);
                 proc.chain({ program: cmd, arguments: args });
                 ret = proc.end(console.log);
                 console.log("got " + ret);
