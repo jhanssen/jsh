@@ -114,7 +114,7 @@ function matchOperator(op, ret)
     return false;
 }
 
-function runLine(line)
+function runLine(line, readLine)
 {
     // try to run the entire thing as JS
     var isjs = true;
@@ -188,9 +188,14 @@ function runLine(line)
             if (job) {
                 job.proc({ program: cmd, arguments: args });
             } else {
-                var proc = new pc.ProcessChain(global.jsh.jshNative);
+                var proc = new pc.ProcessChain(global.jsh.jshNative, Job.FOREGROUND);
                 proc.chain({ program: cmd, arguments: args });
-                ret = proc.end(console.log);
+                ret = proc.exec(function(data) {
+                                    if (data.type === "stdout")
+                                        console.log(data.data);
+                                    else
+                                        readLine.resume();
+                                });
                 console.log("got " + ret);
                 if (matchOperator(op, !ret))
                     continue;
@@ -212,5 +217,5 @@ var read = new rl.ReadLine(function(data) {
         process.exit();
     }
 
-    runLine(data);
+    runLine(data, read);
 });
