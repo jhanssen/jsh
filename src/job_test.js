@@ -1,11 +1,18 @@
 var Job = require('Job');
+var jsh = require('jsh');
+global.jsh = {
+    jshNative: new jsh.native.jsh()
+};
 
 var job1 = new Job.Job();
 
-var js1 = new Job.JavaScript(function(data) { return "hello from js"; });
-var js2 = new Job.JavaScript(function(data) { return data + " fofo"; });
-var js3 = new Job.JavaScript(function(data) { return data + " final"; });
-job1.proc({ program: "/bin/echo", arguments: [ "hello from echo"] }).js(js2).proc({ program: "/bin/grep", arguments: [ "hello" ]}).js(js3).exec(function(data) { console.log("hey " + data); });
+var js1 = new Job.JavaScript(function(data) { return data + " fofo hello"; });
+var js2 = new Job.JavaScript(function(data) { return data + " final"; });
+job1.proc({ program: "/bin/echo", arguments: [ "hello from echo"] }).js(js1).proc({ program: "/bin/grep", arguments: [ "hello" ]}).js(js2).exec(0, function(data) { console.log("hey 1 " + data); });
+//job1.proc({ program: "/bin/echo", arguments: [ "hello from echo"] }).js(js1).exec(0, function(data) { console.log("hey 1 " + data); });
 
+var js3 = new Job.JavaScript(function(data) { return "hello from js"; });
+var js4 = new Job.JavaScript(function(data) { return data + " fofo"; });
+var js5 = new Job.JavaScript(function(data) { return data + " final"; });
 var job2 = new Job.Job();
-job2.js(js1).js(js2).proc({ program: "/bin/grep", arguments: [ "hello" ]}).js(js3).exec(function(data) { console.log("hey " + data); });
+job2.js(js3).js(js4).proc({ program: "/bin/grep", arguments: [ "hello" ]}).js(js5).exec(0, function(data) { console.log("hey 2 " + data); });
