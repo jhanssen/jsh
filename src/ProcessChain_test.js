@@ -1,12 +1,14 @@
 var pc = require("ProcessChain");
+var jsh = require('jsh');
+var jshNative = new jsh.native.jsh();
 
-var obj1 = new pc.ProcessChain();
+var obj1 = new pc.ProcessChain(jshNative, 0);
 obj1.chain({ program: "/bin/ls", arguments: [ "/bin" ]}).chain({ program: "/bin/grep", arguments: [ "bz" ]});
-obj1.end(function(data) { console.log(data + "\n"); });
+obj1.exec(function(data) { console.log(JSON.stringify(data) + "\n"); });
 
-var obj2 = new pc.ProcessChain();
+var obj2 = new pc.ProcessChain(jshNative, 0);
 obj2.chain({ program: "/bin/bash", arguments: [ "-c", "echo $FOO" ], cwd: "/home", environment: [ "FOO=bar" ] });
-obj2.end(function(data) { console.log(data + "\n"); });
+obj2.exec(function(data) { console.log(JSON.stringify(data) + "\n"); });
 
-var obj3 = new pc.ProcessChain();
-obj3.chain({ program: "/bin/grep", arguments: [ "foob" ] }).write("foobar baz").end(function(data) { console.log("grep " + data + "\n"); });
+var obj3 = new pc.ProcessChain(jshNative, 0);
+obj3.chain({ program: "/bin/grep", arguments: [ "foob" ] }).write("foobar baz").exec(function(data) { console.log("grep " + JSON.stringify(data) + "\n"); });
