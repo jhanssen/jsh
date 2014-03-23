@@ -6,6 +6,7 @@ var jsh = require('jsh');
 global.jsh = {
     jshNative: new jsh.native.jsh()
 };
+var read;
 
 function maybeJavaScript(token)
 {
@@ -188,15 +189,12 @@ function runLine(line, readLine)
             if (job) {
                 job.proc({ program: cmd, arguments: args });
             } else {
-                var proc = new pc.ProcessChain(global.jsh.jshNative, Job.FOREGROUND);
-                proc.chain({ program: cmd, arguments: args });
-                ret = proc.exec(function(data) {
-                                    if (data.type === "stdout")
-                                        console.log(data.data);
-                                    else
-                                        readLine.resume();
-                                });
-                console.log("got " + ret);
+                for (var k in global.jsh.jshNative) {
+                    console.log(k);
+                }
+                var procjob = new Job.Job();
+                procjob.proc({ program: cmd, arguments: args });
+                procjob.exec(Job.FOREGROUND, function(data) { console.log(data); }, function() { read.resume(); });
                 if (matchOperator(op, !ret))
                     continue;
                 else
@@ -206,11 +204,11 @@ function runLine(line, readLine)
     }
     if (job) {
         console.log("running job");
-        job.exec(console.log);
+        job.exec(Job.FOREGROUND, console.log, function() { read.resume(); });
     }
 }
 
-var read = new rl.ReadLine(function(data) {
+read = new rl.ReadLine(function(data) {
     if (data === undefined) {
         read.cleanup();
         global.jsh.jshNative.cleanup();
