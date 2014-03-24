@@ -3,8 +3,11 @@ var pc = require('ProcessChain');
 var Job = require('Job');
 var Tokenizer = require('Tokenizer');
 var jsh = require('jsh');
+var path = require('path');
+var fs = require('fs');
 global.jsh = {
-    jshNative: new jsh.native.jsh()
+    jshNative: new jsh.native.jsh(),
+    allJobs: Job.Jobs
 };
 var read;
 
@@ -118,10 +121,29 @@ function matchOperator(op, ret)
 function runLine(line, readLine)
 {
     // try to run the entire thing as JS
+
+    var tryLine = line, i, isSingle = true;
+    // does this look like a single function with no ()?
+    for (i in line) {
+        switch (line[i]) {
+        case " ":
+        case "(":
+        case "=":
+            isSingle = false;
+            break;
+        }
+        if (!isSingle) {
+            break;
+        }
+    }
+    if (isSingle) {
+        tryLine += "()";
+    }
+
     var isjs = true;
     try {
-        console.log("trying the entire thing");
-        eval.call(global, line);
+        console.log("trying the entire thing: '" + tryLine + "'");
+        eval.call(global, tryLine);
     } catch (e) {
         isjs = false;
     }
@@ -151,7 +173,7 @@ function runLine(line, readLine)
         } else if (op !== ';' && job) {
             throw "Invalid operator for pipe job";
         }
-        for (var i in token) {
+        for (i in token) {
             console.log("  token " + token[i].type + " '" + token[i].data + "'");
         }
 
@@ -182,7 +204,7 @@ function runLine(line, readLine)
         console.log("  is a command");
         var cmd = undefined;
         var args = [];
-        for (var i in token) {
+        for (i in token) {
             if (cmd === undefined) {
                 cmd = token[i].data;
             } else if (token[i].type !== Tokenizer.HIDDEN) {
@@ -217,6 +239,13 @@ function setupEnv() {
     }
 }
 
+function setupBuiltins() {
+    var builtins = require('Builtins');
+    for (var i in builtins) {
+        global[i] = builtins[i];
+    }
+}
+
 global.jsh.environment = function() {
     var env = [];
     for (var i in global) {
@@ -229,6 +258,7 @@ global.jsh.environment = function() {
 };
 
 setupEnv();
+setupBuiltins();
 
 read = new rl.ReadLine(function(data) {
     if (data === undefined) {
