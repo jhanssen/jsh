@@ -122,28 +122,29 @@ function runLine(line, readLine)
 {
     // try to run the entire thing as JS
 
-    var tryLine = line, i, isSingle = true;
-    // does this look like a single function with no ()?
-    for (i in line) {
-        switch (line[i]) {
-        case " ":
-        case "(":
-        case "=":
-            isSingle = false;
-            break;
+    var isjs = true;
+
+    // does this evaluate to a function?
+    try {
+        var func = eval(line);
+        if (typeof func === "function") {
+            // yes, just call it
+            func();
+        } else {
+            isjs = false;
         }
-        if (!isSingle) {
-            break;
-        }
+    } catch (e) {
+        isjs = false;
     }
-    if (isSingle) {
-        tryLine += "()";
+    if (isjs) {
+        read.resume();
+        return;
     }
 
-    var isjs = true;
+    isjs = true;
     try {
-        console.log("trying the entire thing: '" + tryLine + "'");
-        eval.call(global, tryLine);
+        console.log("trying the entire thing: '" + line + "'");
+        eval.call(global, line);
     } catch (e) {
         isjs = false;
     }
