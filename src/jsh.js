@@ -7,7 +7,7 @@ var path = require('path');
 var fs = require('fs');
 global.jsh = {
     jshNative: new jsh.native.jsh(),
-    allJobs: Job.Jobs
+    Job: Job
 };
 var read;
 
