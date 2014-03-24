@@ -120,12 +120,15 @@ function runLine(line, readLine)
     // try to run the entire thing as JS
     var isjs = true;
     try {
+        console.log("trying the entire thing");
         eval.call(global, line);
     } catch (e) {
         isjs = false;
     }
-    if (isjs)
+    if (isjs) {
+        read.resume();
         return;
+    }
 
     var op, ret, job;
 
@@ -165,7 +168,9 @@ function runLine(line, readLine)
                 ret = runJavaScript(token, job);
             } catch (e) {
                 ret = false;
+                console.error(e);
             }
+            read.resume();
         }
         if (!iscmd) {
             if (matchOperator(op, ret))
@@ -187,13 +192,10 @@ function runLine(line, readLine)
         if (cmd !== undefined) {
             console.log("execing cmd " + cmd);
             if (job) {
-                job.proc({ program: cmd, arguments: args });
+                job.proc({ program: cmd, arguments: args, environment: global.jsh.environment(), cwd: process.cwd() });
             } else {
-                for (var k in global.jsh.jshNative) {
-                    console.log(k);
-                }
                 var procjob = new Job.Job();
-                procjob.proc({ program: cmd, arguments: args });
+                procjob.proc({ program: cmd, arguments: args, environment: global.jsh.environment(), cwd: process.cwd() });
                 procjob.exec(Job.FOREGROUND, function(data) { console.log(data); }, function() { read.resume(); });
                 if (matchOperator(op, !ret))
                     continue;
@@ -208,6 +210,26 @@ function runLine(line, readLine)
     }
 }
 
+function setupEnv() {
+    for (var i in process.env) {
+        if (i !== undefined)
+            global[i] = process.env[i];
+    }
+}
+
+global.jsh.environment = function() {
+    var env = [];
+    for (var i in global) {
+        if (typeof global[i] === "string"
+            || typeof global[i] === "number") {
+            env.push(i + "=" + global[i]);
+        }
+    }
+    return env;
+};
+
+setupEnv();
+
 read = new rl.ReadLine(function(data) {
     if (data === undefined) {
         read.cleanup();
@@ -215,5 +237,10 @@ read = new rl.ReadLine(function(data) {
         process.exit();
     }
 
-    runLine(data, read);
+    try {
+        runLine(data, read);
+    } catch (e) {
+        console.log(e);
+        read.resume();
+    }
 });
