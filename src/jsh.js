@@ -11,16 +11,9 @@ global.jsh = {
 };
 var read;
 
-function maybeJavaScript(token)
+function isFunction(token)
 {
-    if (token[0].type === Tokenizer.GROUP) {
-        return false;
-    } else if (token[0].type === Tokenizer.JAVASCRIPT) {
-        if (token.length !== 1) {
-            throw "Unexpected JS token length: " + token.length;
-        }
-        return true;
-    } else if (token[0].type === Tokenizer.COMMAND) {
+    if (token[0].type === Tokenizer.COMMAND) {
         // Check if the first token is an existing function
 
         var list = token[0].data.split('.');
@@ -36,6 +29,21 @@ function maybeJavaScript(token)
     return false;
 }
 
+function maybeJavaScript(token)
+{
+    if (token[0].type === Tokenizer.GROUP) {
+        return false;
+    } else if (token[0].type === Tokenizer.JAVASCRIPT) {
+        if (token.length !== 1) {
+            throw "Unexpected JS token length: " + token.length;
+        }
+        return true;
+    } else if (isFunction(token)) {
+        return true;
+    }
+    return false;
+}
+
 function runJavaScript(token, job)
 {
     var func = "";
@@ -43,13 +51,11 @@ function runJavaScript(token, job)
     var cnt = 0;
 
     if (token[0].type !== Tokenizer.JAVASCRIPT) {
-        var hasParen = token.length > 1 && token[1].data === '(';
-
         for (var i in token) {
             if (!func) {
-                func = token[i].data + (hasParen ? "" : "(");
+                func = token[i].data + "(";
             } else {
-                if (hasParen) {
+                if (token[i].type === Tokenizer.GROUP) {
                     func += token[i].data;
                 } else {
                     if (token[i].data === "'") {
@@ -71,7 +77,7 @@ function runJavaScript(token, job)
                 }
             }
         }
-        func += (hasParen ? "" : ")");
+        func += ")";
     } else {
         for (var i in token) {
             func += token[i].data + " ";
@@ -120,33 +126,31 @@ function matchOperator(op, ret)
 
 function runLine(line, readLine)
 {
-    // try to run the entire thing as JS
-
+    var tokens = [];
+    var tok = new Tokenizer.Tokenizer(), token;
+    tok.tokenize(line);
     var isjs = true;
-
-    // does this evaluate to a function?
-    try {
-        var func = eval(line);
-        if (typeof func === "function") {
-            // yes, just call it
-            func();
-        } else {
+    while ((token = tok.next())) {
+        // for (var idx = 0; idx < token.length; ++idx) {
+        //     console.log(token[idx].type + " -> " + token[idx].data);
+        // }
+        tokens.push(token);
+    }
+    if (tokens.length === 1 && isFunction(tokens[0])) {
+        try {
+            runJavaScript(tokens[0]);
+        } catch (e) {
+            console.log(e);
             isjs = false;
         }
-    } catch (e) {
-        isjs = false;
-    }
-    if (isjs) {
-        read.resume();
-        return;
-    }
-
-    isjs = true;
-    try {
-        console.log("trying the entire thing: '" + line + "'");
-        eval.call(global, line);
-    } catch (e) {
-        isjs = false;
+    } else {
+        try {
+            console.log("trying the entire thing: '" + line + "'");
+            eval.call(global, line);
+        } catch (e) {
+            console.log(e);
+            isjs = false;
+        }
     }
     if (isjs) {
         read.resume();
@@ -155,9 +159,8 @@ function runLine(line, readLine)
 
     var op, ret, job;
 
-    var tok = new Tokenizer.Tokenizer(), token;
-    tok.tokenize(line);
-    while ((token = tok.next())) {
+    for (var idx = 0; idx < tokens.length; ++idx) {
+        token = tokens[idx];
         console.log("----");
         op = operator(token);
         if (op === undefined) {
