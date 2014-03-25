@@ -50,8 +50,12 @@ function runJavaScript(token, job)
     var state = 0;
     var cnt = 0;
 
+    if (token.length < 2) {
+        throw "Token length < 2 - " + token.length;
+    }
+
     if (token[0].type !== Tokenizer.JAVASCRIPT) {
-        for (var i in token) {
+        for (var i = 0; i < token.length - 1; ++i) {
             if (!func) {
                 func = token[i].data + "(";
             } else {
