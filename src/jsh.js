@@ -10,6 +10,7 @@ global.jsh = {
     Job: Job
 };
 var read;
+var procjob;
 
 function isFunction(token)
 {
@@ -128,7 +129,113 @@ function matchOperator(op, ret)
     return false;
 }
 
-function runLine(line, readLine)
+function runTokens(tokens, pos, noResume)
+{
+    if (pos === tokens.length) {
+        if (!noResume)
+            read.resume();
+        return;
+    }
+
+    var job;
+    for (var i = pos; i < tokens.length; ++i) {
+        var token = tokens[i];
+        var op = operator(token);
+        console.log("----");
+        op = operator(token);
+        if (op === undefined) {
+            throw "Unrecognized operator";
+        }
+        // remove the operator
+        token.pop();
+
+        console.log("operator " + op);
+        if (op === '|') {
+            if (!job) {
+                job = new Job.Job();
+            }
+        } else if (op !== ';' && job) {
+            throw "Invalid operator for pipe job";
+        }
+        for (i in token) {
+            console.log("  token " + token[i].type + " '" + token[i].data + "'");
+        }
+
+        var iscmd = true;
+        if (token.length >= 1 && token[0].type === Tokenizer.GROUP) {
+            console.log("    is a group");
+            // run the group
+            ret = runLine(token[0].data, true);
+            iscmd = false;
+        } else if (maybeJavaScript(token)) {
+            console.log("    might be js");
+            iscmd = false;
+            try {
+                ret = runJavaScript(token, job);
+            } catch (e) {
+                ret = false;
+                console.error(e);
+            }
+            if (!noResume)
+                read.resume();
+        }
+        if (!iscmd) {
+            if (matchOperator(op, ret))
+                continue;
+            else
+                return;
+        }
+        console.log("  is a command");
+        var cmd = undefined;
+        var args = [];
+        for (i in token) {
+            if (cmd === undefined) {
+                cmd = token[i].data;
+            } else if (token[i].type !== Tokenizer.HIDDEN) {
+                args.push(token[i].data);
+            }
+        }
+        if (cmd !== undefined) {
+            console.log("execing cmd " + cmd);
+            try {
+                if (job) {
+                    job.proc({ program: cmd, arguments: args, environment: global.jsh.environment(), cwd: process.cwd() });
+                } else {
+                    procjob = new Job.Job();
+                    procjob.proc({ program: cmd, arguments: args, environment: global.jsh.environment(), cwd: process.cwd() });
+                    procjob.exec(Job.FOREGROUND, function(data) { console.log(data); },
+                                 function(code) {
+                                     if (matchOperator(op, !code)) {
+                                         try {
+                                             runTokens(tokens, pos + 1, noResume);
+                                         } catch (e) {
+                                             console.log(e);
+                                             if (!noResume)
+                                                 read.resume();
+                                         }
+                                     } else {
+                                         if (!noResume)
+                                             read.resume();
+                                     }
+                                     procjob = undefined;
+                                 });
+                    return;
+                }
+            } catch (e) {
+                console.log(e);
+                if (!noResume)
+                    read.resume();
+                return;
+            }
+        }
+    }
+    if (job) {
+        console.log("running job");
+        job.exec(Job.FOREGROUND, console.log, function() { if (!noResume) read.resume(); });
+    }
+}
+
+function runLine(line, noResume)
 {
     var tokens = [];
     var tok = new Tokenizer.Tokenizer(), token;
@@ -157,86 +264,15 @@ function runLine(line, readLine)
         }
     }
     if (isjs) {
-        read.resume();
+        if (!noResume)
+            read.resume();
         return;
     }
 
-    var op, ret, job;
-
-    for (var idx = 0; idx < tokens.length; ++idx) {
-        token = tokens[idx];
-        console.log("----");
-        op = operator(token);
-        if (op === undefined) {
-            throw "Unrecognized operator";
-        }
-        // remove the operator
-        token.pop();
-
-        console.log("operator " + op);
-        if (op === '|') {
-            if (!job) {
-                job = new Job.Job();
-            }
-        } else if (op !== ';' && job) {
-            throw "Invalid operator for pipe job";
-        }
-        for (i in token) {
-            console.log("  token " + token[i].type + " '" + token[i].data + "'");
-        }
-
-        var iscmd = true;
-        if (token.length >= 1 && token[0].type === Tokenizer.GROUP) {
-            console.log("    is a group");
-            // run the group
-            ret = runLine(token[0].data);
-            iscmd = false;
-        } else if (maybeJavaScript(token)) {
-            console.log("    might be js");
-            iscmd = false;
-            try {
-                ret = runJavaScript(token, job);
-            } catch (e) {
-                ret = false;
-                console.error(e);
-            }
-            read.resume();
-        }
-        if (!iscmd) {
-            if (matchOperator(op, ret))
-                continue;
-            else
-                return;
-        }
-
-        console.log("  is a command");
-        var cmd = undefined;
-        var args = [];
-        for (i in token) {
-            if (cmd === undefined) {
-                cmd = token[i].data;
-            } else if (token[i].type !== Tokenizer.HIDDEN) {
-                args.push(token[i].data);
-            }
-        }
-        if (cmd !== undefined) {
-            console.log("execing cmd " + cmd);
-            if (job) {
-                job.proc({ program: cmd, arguments: args, environment: global.jsh.environment(), cwd: process.cwd() });
-            } else {
-                var procjob = new Job.Job();
-                procjob.proc({ program: cmd, arguments: args, environment: global.jsh.environment(), cwd: process.cwd() });
-                procjob.exec(Job.FOREGROUND, function(data) { console.log(data); }, function() { read.resume(); });
-                if (matchOperator(op, !ret))
-                    continue;
-                else
-                    return;
-            }
-        }
-    }
-    if (job) {
-        console.log("running job");
-        job.exec(Job.FOREGROUND, console.log, function() { read.resume(); });
+    try {
+        runTokens(tokens, 0, noResume);
+    } catch (e) {
+        console.log(e);
     }
 }
 
@@ -276,7 +312,7 @@ read = new rl.ReadLine(function(data) {
     }
 
     try {
-        runLine(data, read);
+        runLine(data);
     } catch (e) {
         console.log(e);
         read.resume();
