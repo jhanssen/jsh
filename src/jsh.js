@@ -11,11 +11,11 @@ global.jsh = {
     jobCount: 0
 };
 var read;
-var procjob;
+var runState;
 
-function RunState(cb)
+function RunState()
 {
-    this._data = [{cb: cb, status: []}];
+    this._data = [];
 }
 
 RunState.prototype.push = function(cb)
@@ -28,7 +28,14 @@ RunState.prototype.pop = function()
     var data = this._data.pop();
     var c = this._calc(data.status);
     console.log("popping with " + JSON.stringify(c));
-    data.cb(c.status);
+    data.cb(c.status, data);
+};
+
+RunState.prototype.at = function(pos)
+{
+    if (pos < 0 || pos >= this._data.length)
+        return undefined;
+    return this._data[pos];
 };
 
 RunState.prototype.update = function(status)
@@ -140,14 +147,18 @@ function runJavaScript(token, job)
 {
     var func = "";
     var state = 0;
-    var cnt = 0;
+    var cnt = 0, i;
 
-    if (token.length < 2) {
-        throw "Token length < 2 - " + token.length;
+    if (token.length < 1) {
+        throw "Token length < 1 - " + token.length;
+    }
+    var end = token.length;
+    if (token[token.length - 1].type === Tokenizer.OPERATOR) {
+        end = token.length - 1;
     }
 
     if (token[0].type !== Tokenizer.JAVASCRIPT) {
-        for (var i = 0; i < token.length - 1; ++i) {
+        for (i = 0; i < end; ++i) {
             if (!func) {
                 func = token[i].data + "(";
             } else {
@@ -175,7 +186,7 @@ function runJavaScript(token, job)
         }
         func += ")";
     } else {
-        for (var i in token) {
+        for (i in token) {
             func += token[i].data + " ";
         }
     }
@@ -189,9 +200,10 @@ function runJavaScript(token, job)
         if (typeof jobfunc === "function") {
             job.js(new Job.JavaScript(jobfunc));
         }
+        return undefined;
     } else {
         console.log("evaling " + func);
-        eval.call(global, func);
+        return eval.call(global, func);
     }
 }
 
@@ -207,7 +219,25 @@ function operator(token)
     return undefined;
 }
 
-function runTokens(tokens, pos, runState)
+function hasWait(obj)
+{
+    if (typeof obj === "object")
+        if (typeof obj.jsh === "object")
+            return obj.jsh.wait;
+    return false;
+}
+
+function jsReturn(ret)
+{
+    if (typeof ret === "boolean")
+        return ret;
+    if (typeof ret === "object")
+        if (typeof ret.jsh === "object")
+            return ret.jsh.ret;
+    return !!ret;
+}
+
+function runTokens(tokens, pos)
 {
     if (pos === tokens.length) {
         runState.pop();
@@ -244,11 +274,11 @@ function runTokens(tokens, pos, runState)
             // run the group
             runState.push(function(ret) {
                 if (runState.checkOperator(op, ret))
-                    runTokens(tokens, pos + 1, runState);
+                    runTokens(tokens, pos + 1);
                 else
                     runState.pop();
             });
-            runLine(token[0].data, runState);
+            runLine(token[0].data);
             return;
         } else if (maybeJavaScript(token)) {
             console.log("    might be js");
@@ -261,7 +291,18 @@ function runTokens(tokens, pos, runState)
             }
         }
         if (!iscmd) {
-            if (runState.checkOperator(op, ret)) {
+            if (hasWait(ret)) {
+                console.log("pushing...");
+                runState.push(function(ret) {
+                    console.log("done!");
+                    if (runState.checkOperator(op, ret))
+                        runTokens(tokens, pos + 1);
+                    else
+                        runState.pop();
+                });
+                return;
+            }
+            if (runState.checkOperator(op, jsReturn(ret))) {
                 continue;
             } else {
                 runState.pop();
@@ -284,7 +325,7 @@ function runTokens(tokens, pos, runState)
                 if (job) {
                     job.proc({ program: cmd, arguments: args, environment: global.jsh.environment(), cwd: process.cwd() });
                 } else {
-                    procjob = new Job.Job();
+                    var procjob = new Job.Job();
                     procjob.proc({ program: cmd, arguments: args, environment: global.jsh.environment(), cwd: process.cwd() });
                     procjob.exec(Job.FOREGROUND, function(data) { console.log(data); },
                                  function(code) {
@@ -298,7 +339,6 @@ function runTokens(tokens, pos, runState)
                                      } else {
                                          runState.pop();
                                      }
-                                     procjob = undefined;
                                  });
                     return;
                 }
@@ -314,7 +354,7 @@ function runTokens(tokens, pos, runState)
     }
 }
 
-function runLine(line, runState)
+function runLine(line)
 {
     var tokens = [];
     var tok = new Tokenizer.Tokenizer(), token;
@@ -344,13 +384,18 @@ function runLine(line, runState)
         }
     }
     if (isjs) {
-        runState.update(ret);
+        console.log("is js, ret " + JSON.stringify(ret));
+        if (hasWait(ret)) {
+            console.log("has wait foo");
+            return;
+        }
+        runState.update(jsReturn(ret));
         runState.pop();
         return;
     }
 
     try {
-        runTokens(tokens, 0, runState);
+        runTokens(tokens, 0);
     } catch (e) {
         console.log(e);
         runState.pop();
@@ -384,6 +429,7 @@ global.jsh.environment = function() {
 
 setupEnv();
 setupBuiltins();
+runState = new RunState();
 
 read = new rl.ReadLine(function(data) {
     if (data === undefined) {
@@ -393,7 +439,8 @@ read = new rl.ReadLine(function(data) {
     }
 
     try {
-        runLine(data, new RunState(function() { read.resume(); }));
+        runState.push(function(status, data) { if (!data.wait) read.resume(); });
+        runLine(data, runState);
     } catch (e) {
         console.log(e);
         read.resume();
