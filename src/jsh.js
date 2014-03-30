@@ -450,6 +450,7 @@ runState = new RunState();
 read = new rl.ReadLine(function(data) {
     if (data === undefined) {
         read.cleanup();
+        Job.cleanup();
         global.jsh.jshNative.cleanup();
         process.exit();
     }
