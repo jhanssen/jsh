@@ -330,6 +330,8 @@ function runTokens(tokens, pos)
                     procjob.proc({ program: cmd, arguments: args, environment: global.jsh.environment(), cwd: process.cwd() });
                     procjob.exec(Job.FOREGROUND, function(data) { console.log(data); },
                                  function(code) {
+                                     if (procjob.type === Job.BACKGROUND)
+                                         return;
                                      if (runState.checkOperator(op, !code)) {
                                          try {
                                              runTokens(tokens, pos + 1, runState);
@@ -351,7 +353,7 @@ function runTokens(tokens, pos)
     }
     if (job) {
         console.log("running job");
-        job.exec(Job.FOREGROUND, console.log, function(code) { runState.update(!code); runState.pop(); });
+        job.exec(Job.FOREGROUND, console.log, function(code) { if (job.type === Job.FOREGROUND) { runState.update(!code); runState.pop(); } });
     }
 }
 
