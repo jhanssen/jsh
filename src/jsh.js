@@ -153,7 +153,8 @@ function runJavaScript(token, job)
         throw "Token length < 1 - " + token.length;
     }
     var end = token.length;
-    if (token[token.length - 1].type === Tokenizer.OPERATOR) {
+    if (token[token.length - 1].type === Tokenizer.OPERATOR
+        || token[token.length - 1].type === Tokenizer.HIDDEN) {
         end = token.length - 1;
     }
 
@@ -354,6 +355,11 @@ function runTokens(tokens, pos)
     }
 }
 
+function isJSError(e)
+{
+    return (e instanceof SyntaxError || e instanceof ReferenceError);
+}
+
 function runLine(line)
 {
     var tokens = [];
@@ -371,16 +377,24 @@ function runLine(line)
         try {
             ret = runJavaScript(tokens[0]);
         } catch (e) {
-            console.log(e);
-            isjs = false;
+            if (isJSError(e)) {
+                console.log(e);
+                isjs = false;
+            } else {
+                throw e;
+            }
         }
     } else {
         try {
             console.log("trying the entire thing: '" + line + "'");
             ret = eval.call(global, line);
         } catch (e) {
-            console.log(e);
-            isjs = false;
+            if (isJSError(e)) {
+                console.log(e);
+                isjs = false;
+            } else {
+                throw e;
+            }
         }
     }
     if (isjs) {
