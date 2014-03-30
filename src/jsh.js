@@ -7,10 +7,101 @@ var path = require('path');
 var fs = require('fs');
 global.jsh = {
     jshNative: new jsh.native.jsh(),
-    Job: Job
+    Job: Job,
+    jobCount: 0
 };
 var read;
 var procjob;
+
+function RunState(cb)
+{
+    this._data = [{cb: cb, status: []}];
+}
+
+RunState.prototype.push = function(cb)
+{
+    this._data.push({cb: cb, status: []});
+};
+
+RunState.prototype.pop = function()
+{
+    var data = this._data.pop();
+    var c = this._calc(data.status);
+    console.log("popping with " + JSON.stringify(c));
+    data.cb(c.status);
+};
+
+RunState.prototype.update = function(status)
+{
+    this._data[this._data.length - 1].status = [status];
+};
+
+RunState.prototype.checkOperator = function(op, ret)
+{
+    var cur = this._data[this._data.length - 1];
+    if (op === "&&" || op === "||" || op === ";") {
+        switch (this._currentOp()) {
+        case ";":
+        case "|":
+            cur.status = [];
+            break;
+        }
+        cur.status.push(ret, op);
+        return this._calc(cur.status).cont;
+    }
+    return false;
+};
+
+RunState.prototype._currentOp = function()
+{
+    if (this._data.length === 0)
+        return "";
+    var cur = this._data[this._data.length - 1];
+    if (cur.status.length < 2)
+        return "";
+    var pos = cur.status.length - 1;
+    if (!(pos % 2))
+        return "";
+    return cur.status[pos];
+};
+
+RunState.prototype._calc = function(status)
+{
+    if (status.length === 0)
+        return { cont: true, status: true };
+    var cur = undefined;
+    var op = undefined;
+    for (var idx = 0; idx < status.length; ++idx) {
+        if (cur === undefined) {
+            cur = status[idx];
+            continue;
+        }
+        if (idx % 2) {
+            op = status[idx];
+            var next = (idx + 1 < status.length) ? status[idx + 1] : undefined;
+
+            switch (op) {
+            case "&&":
+                if (!cur)
+                    return { cont: false, status: false };
+                if (next !== undefined) {
+                    cur = next;
+                }
+                break;
+            case "||":
+                if (cur)
+                    return { cont: false, status: true };
+                if (next !== undefined) {
+                    cur = next;
+                }
+                break;
+            case ";":
+                return { cont: true, status: cur };
+            }
+        }
+    }
+    return { cont: true, status: (cur === undefined) ? true : cur };
+};
 
 function isFunction(token)
 {
@@ -116,24 +207,10 @@ function operator(token)
     return undefined;
 }
 
-function matchOperator(op, ret)
-{
-    if (op === ';')
-        return true;
-    else if (op === '&&' && ret)
-        return true;
-    else if (op === '||' && !ret)
-        return true;
-    else if (op === '|')
-        return true;
-    return false;
-}
-
-function runTokens(tokens, pos, noResume)
+function runTokens(tokens, pos, runState)
 {
     if (pos === tokens.length) {
-        if (!noResume)
-            read.resume();
+        runState.pop();
         return;
     }
 
@@ -161,12 +238,18 @@ function runTokens(tokens, pos, noResume)
             console.log("  token " + token[i].type + " '" + token[i].data + "'");
         }
 
-        var iscmd = true;
+        var iscmd = true, ret;
         if (token.length >= 1 && token[0].type === Tokenizer.GROUP) {
             console.log("    is a group");
             // run the group
-            ret = runLine(token[0].data, true);
-            iscmd = false;
+            runState.push(function(ret) {
+                if (runState.checkOperator(op, ret))
+                    runTokens(tokens, pos + 1, runState);
+                else
+                    runState.pop();
+            });
+            runLine(token[0].data, runState);
+            return;
         } else if (maybeJavaScript(token)) {
             console.log("    might be js");
             iscmd = false;
@@ -176,14 +259,14 @@ function runTokens(tokens, pos, noResume)
                 ret = false;
                 console.error(e);
             }
-            if (!noResume)
-                read.resume();
         }
         if (!iscmd) {
-            if (matchOperator(op, ret))
+            if (runState.checkOperator(op, ret)) {
                 continue;
-            else
+            } else {
+                runState.pop();
                 return;
+            }
         }
         console.log("  is a command");
         var cmd = undefined;
@@ -205,17 +288,15 @@ function runTokens(tokens, pos, noResume)
                     procjob.proc({ program: cmd, arguments: args, environment: global.jsh.environment(), cwd: process.cwd() });
                     procjob.exec(Job.FOREGROUND, function(data) { console.log(data); },
                                  function(code) {
-                                     if (matchOperator(op, !code)) {
+                                     if (runState.checkOperator(op, !code)) {
                                          try {
-                                             runTokens(tokens, pos + 1, noResume);
+                                             runTokens(tokens, pos + 1, runState);
                                          } catch (e) {
                                              console.log(e);
-                                             if (!noResume)
-                                                 read.resume();
+                                             runState.pop();
                                          }
                                      } else {
-                                         if (!noResume)
-                                             read.resume();
+                                         runState.pop();
                                      }
                                      procjob = undefined;
                                  });
@@ -223,19 +304,17 @@ function runTokens(tokens, pos, noResume)
                 }
             } catch (e) {
                 console.log(e);
-                if (!noResume)
-                    read.resume();
-                return;
+                throw e;
             }
         }
     }
     if (job) {
         console.log("running job");
-        job.exec(Job.FOREGROUND, console.log, function() { if (!noResume) read.resume(); });
+        job.exec(Job.FOREGROUND, console.log, function(code) { runState.update(!code); runState.pop(); });
     }
 }
 
-function runLine(line, noResume)
+function runLine(line, runState)
 {
     var tokens = [];
     var tok = new Tokenizer.Tokenizer(), token;
@@ -247,9 +326,10 @@ function runLine(line, noResume)
         // }
         tokens.push(token);
     }
+    var ret;
     if (tokens.length === 1 && isFunction(tokens[0])) {
         try {
-            runJavaScript(tokens[0]);
+            ret = runJavaScript(tokens[0]);
         } catch (e) {
             console.log(e);
             isjs = false;
@@ -257,22 +337,23 @@ function runLine(line, noResume)
     } else {
         try {
             console.log("trying the entire thing: '" + line + "'");
-            eval.call(global, line);
+            ret = eval.call(global, line);
         } catch (e) {
             console.log(e);
             isjs = false;
         }
     }
     if (isjs) {
-        if (!noResume)
-            read.resume();
+        runState.update(ret);
+        runState.pop();
         return;
     }
 
     try {
-        runTokens(tokens, 0, noResume);
+        runTokens(tokens, 0, runState);
     } catch (e) {
         console.log(e);
+        runState.pop();
     }
 }
 
@@ -312,7 +393,7 @@ read = new rl.ReadLine(function(data) {
     }
 
     try {
-        runLine(data);
+        runLine(data, new RunState(function() { read.resume(); }));
     } catch (e) {
         console.log(e);
         read.resume();
