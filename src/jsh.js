@@ -28,7 +28,7 @@ RunState.prototype.pop = function()
     var data = this._data.pop();
     var c = this._calc(data.status);
     console.log("popping with " + JSON.stringify(c));
-    data.cb(c.status, data);
+    data.cb(c.status);
 };
 
 RunState.prototype.at = function(pos)
@@ -439,7 +439,7 @@ read = new rl.ReadLine(function(data) {
     }
 
     try {
-        runState.push(function(status, data) { if (!data.wait) read.resume(); });
+        runState.push(function() { read.resume(); });
         runLine(data, runState);
     } catch (e) {
         console.log(e);
