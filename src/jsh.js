@@ -1,6 +1,7 @@
 var rl = require('ReadLine');
 var pc = require('ProcessChain');
 var Job = require('Job');
+var Completion = require('Completion');
 var Tokenizer = require('Tokenizer');
 var jsh = require('jsh');
 var path = require('path');
@@ -8,7 +9,8 @@ var fs = require('fs');
 global.jsh = {
     jshNative: new jsh.native.jsh(),
     Job: Job,
-    jobCount: 0
+    jobCount: 0,
+    completion: new Completion.Completion()
 };
 var read;
 var runState;
@@ -447,19 +449,26 @@ setupEnv();
 setupBuiltins();
 runState = new RunState();
 
-read = new rl.ReadLine(function(data) {
-    if (data === undefined) {
-        read.cleanup();
-        Job.cleanup();
-        global.jsh.jshNative.cleanup();
-        process.exit();
-    }
+// first callback function handles input, the second handles completion
+read = new rl.ReadLine(
+    function(data) {
+        // handle input
+        if (data === undefined) {
+            read.cleanup();
+            Job.cleanup();
+            global.jsh.jshNative.cleanup();
+            process.exit();
+        }
 
-    try {
-        runState.push(function() { read.resume(); });
-        runLine(data, runState);
-    } catch (e) {
-        console.log(e);
-        read.resume();
+        try {
+            runState.push(function() { read.resume(); });
+            runLine(data, runState);
+        } catch (e) {
+            console.log(e);
+            read.resume();
+        }
+    },
+    function(data) {
+        global.jsh.completion.complete(data);
     }
-});
+);
