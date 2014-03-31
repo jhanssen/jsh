@@ -469,6 +469,6 @@ read = new rl.ReadLine(
         }
     },
     function(data) {
-        global.jsh.completion.complete(data);
+        return global.jsh.completion.complete(data);
     }
 );
