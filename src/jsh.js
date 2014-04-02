@@ -445,6 +445,7 @@ global.jsh.environment = function() {
     return env;
 };
 
+global.jsh.completion.initDefaults();
 setupEnv();
 setupBuiltins();
 runState = new RunState();
