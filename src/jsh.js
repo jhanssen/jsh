@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 var rl = require('ReadLine');
 var pc = require('ProcessChain');
 var Job = require('Job');
@@ -445,7 +447,6 @@ global.jsh.environment = function() {
     return env;
 };
 
-global.jsh.completion.initDefaults();
 setupEnv();
 setupBuiltins();
 runState = new RunState();
