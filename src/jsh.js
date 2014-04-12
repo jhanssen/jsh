@@ -8,6 +8,7 @@ var Tokenizer = require('Tokenizer');
 var jsh = require('jsh');
 var path = require('path');
 var fs = require('fs');
+var Service = require('Service');
 global.jsh = {
     jshNative: new jsh.native.jsh(),
     Job: Job,
@@ -447,9 +448,30 @@ global.jsh.environment = function() {
     return env;
 };
 
+function loadRCFile(file)
+{
+    var contents;
+    try {
+        contents = fs.readFileSync(file, { encoding: 'utf8' });
+    } catch (err) {
+        return false;
+    }
+
+    try {
+        eval(contents);
+    } catch (err) {
+        console.error("Exception in " + file, err);
+        return false;
+    }
+    return true;
+}
+
 setupEnv();
 setupBuiltins();
 runState = new RunState();
+
+loadRCFile("/etc/jshrc.js");
+loadRCFile(process.env.HOME + "/.jsh/jshrc.js");
 
 // first callback function handles input, the second handles completion
 read = new rl.ReadLine(
