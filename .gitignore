@@ -10,3 +10,4 @@ nodejs.log
 Makefile
 src/node_modules/ProcessChain/build
 src/node_modules/ReadLine/build
+src/node_modules/promise/
