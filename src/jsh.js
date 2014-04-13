@@ -8,12 +8,35 @@ var Tokenizer = require('Tokenizer');
 var jsh = require('jsh');
 var path = require('path');
 var fs = require('fs');
-var Service = require('Service');
+//var Service = require('Service');
 global.jsh = {
     jshNative: new jsh.native.jsh(),
     Job: Job,
     jobCount: 0,
-    completion: new Completion.Completion()
+    completion: new Completion.Completion(),
+    pathify: function(prog) {
+        if (prog.indexOf("/") == -1) {
+            // check PATH
+            var path = global.PATH;
+            if (typeof path !== "string") {
+                // throw here?
+                return "";
+            }
+            // split on ':'
+            path = path.split(":");
+            for (var i in path) {
+                if (global.jsh.jshNative.isExecutable(path[i] + "/" + prog))
+                    prog = path[i] + "/" + prog;
+            }
+            if (prog.indexOf("/") == -1) {
+                throw "File not found: " + prog;
+            }
+        } else if (!global.jsh.jshNative.isExecutable(prog)) {
+            throw "File not found: " + prog;
+        }
+
+        return prog;
+    }
 };
 var read;
 var runState;
