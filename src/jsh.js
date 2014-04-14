@@ -10,6 +10,7 @@ var path = require('path');
 var fs = require('fs');
 //var Service = require('Service');
 global.jsh = {
+    path: /^(.*\/)[^/]*$/.exec(__filename)[1],
     jshNative: new jsh.native.jsh(),
     Job: Job,
     jobCount: 0,
@@ -47,6 +48,7 @@ global.jsh = {
             console.error.apply(console, arguments);
     }
 };
+global.jsh.jshNative.setupShell();
 var read;
 var runState;
 
