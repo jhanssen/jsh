@@ -36,6 +36,15 @@ global.jsh = {
         }
 
         return prog;
+    },
+    logEnabled: false,
+    log: function() {
+        if (this.logEnabled)
+            console.log.apply(console, arguments);
+    },
+    error: function() {
+        if (this.logEnabled)
+            console.error.apply(console, arguments);
     }
 };
 var read;
@@ -55,7 +64,7 @@ RunState.prototype.pop = function()
 {
     var data = this._data.pop();
     var c = this._calc(data.status);
-    console.log("popping with " + JSON.stringify(c));
+    global.jsh.log("popping with " + JSON.stringify(c));
     data.cb(c.status);
 };
 
@@ -148,7 +157,7 @@ function isFunction(token)
         for (var i in list) {
             if (obj === undefined)
                 return false;
-            console.log("testing " + list[i]);
+            global.jsh.log("testing " + list[i]);
             obj = obj[list[i]];
         }
         return (typeof obj === "function");
@@ -246,7 +255,7 @@ function runJavaScript(token, job)
         }
         return undefined;
     } else {
-        console.log("evaling " + func);
+        global.jsh.log("evaling " + func);
         return eval.call(global, func);
     }
 }
@@ -292,7 +301,7 @@ function runTokens(tokens, pos)
     for (var i = pos; i < tokens.length; ++i) {
         var token = tokens[i];
         var op = operator(token);
-        console.log("----");
+        global.jsh.log("----");
         op = operator(token);
         if (op === undefined) {
             throw "Unrecognized operator";
@@ -300,7 +309,7 @@ function runTokens(tokens, pos)
         // remove the operator
         token.pop();
 
-        console.log("operator " + op);
+        global.jsh.log("operator " + op);
         if (op === '|') {
             if (!job) {
                 job = new Job.Job();
@@ -309,12 +318,12 @@ function runTokens(tokens, pos)
             throw "Invalid operator for pipe job";
         }
         for (i in token) {
-            console.log("  token " + token[i].type + " '" + token[i].data + "'");
+            global.jsh.log("  token " + token[i].type + " '" + token[i].data + "'");
         }
 
         var iscmd = true, ret;
         if (token.length >= 1 && token[0].type === Tokenizer.GROUP) {
-            console.log("    is a group");
+            global.jsh.log("    is a group");
             // run the group
             runState.push(function(ret) {
                 if (runState.checkOperator(op, ret))
@@ -325,7 +334,7 @@ function runTokens(tokens, pos)
             runLine(token[0].data);
             return;
         } else if (maybeJavaScript(token)) {
-            console.log("    might be js");
+            global.jsh.log("    might be js");
             iscmd = false;
             try {
                 ret = runJavaScript(token, job);
@@ -337,9 +346,9 @@ function runTokens(tokens, pos)
         }
         if (!iscmd) {
             if (hasWait(ret)) {
-                console.log("pushing...");
+                global.jsh.log("pushing...");
                 runState.push(function(ret) {
-                    console.log("done!");
+                    global.jsh.log("done!");
                     if (runState.checkOperator(op, ret))
                         runTokens(tokens, pos + 1);
                     else
@@ -354,7 +363,7 @@ function runTokens(tokens, pos)
                 return;
             }
         }
-        console.log("  is a command");
+        global.jsh.log("  is a command");
         var cmd = undefined;
         var args = [];
         for (i in token) {
@@ -365,7 +374,7 @@ function runTokens(tokens, pos)
             }
         }
         if (cmd !== undefined) {
-            console.log("execing cmd " + cmd);
+            global.jsh.log("execing cmd " + cmd);
             try {
                 if (job) {
                     job.proc({ program: cmd, arguments: args, environment: global.jsh.environment(), cwd: process.cwd() });
@@ -380,7 +389,7 @@ function runTokens(tokens, pos)
                                          try {
                                              runTokens(tokens, pos + 1, runState);
                                          } catch (e) {
-                                             console.log(e);
+                                             console.log("e1 " + e);
                                              runState.pop();
                                          }
                                      } else {
@@ -390,13 +399,13 @@ function runTokens(tokens, pos)
                     return;
                 }
             } catch (e) {
-                console.log(e);
+                console.log("e2 " + e);
                 throw e;
             }
         }
     }
     if (job) {
-        console.log("running job");
+        global.jsh.log("running job");
         job.exec(Job.FOREGROUND, console.log, function(code) { if (job.type === Job.FOREGROUND) { runState.update(!code); runState.pop(); } });
     }
 }
@@ -424,7 +433,7 @@ function runLine(line)
             ret = runJavaScript(tokens[0]);
         } catch (e) {
             if (isJSError(e)) {
-                console.log(e);
+                console.log("e3 " + e);
                 isjs = false;
             } else {
                 throw e;
@@ -432,11 +441,11 @@ function runLine(line)
         }
     } else {
         try {
-            console.log("trying the entire thing: '" + line + "'");
+            global.jsh.log("trying the entire thing: '" + line + "'");
             ret = eval.call(global, line);
         } catch (e) {
             if (isJSError(e)) {
-                console.log(e);
+                global.jsh.log("e4 " + e);
                 isjs = false;
             } else {
                 throw e;
@@ -444,9 +453,9 @@ function runLine(line)
         }
     }
     if (isjs) {
-        console.log("is js, ret " + JSON.stringify(ret));
+        global.jsh.log("is js, ret " + JSON.stringify(ret));
         if (hasWait(ret)) {
-            console.log("has wait foo");
+            global.jsh.log("has wait foo");
             return;
         }
         runState.update(jsReturn(ret));
@@ -457,7 +466,7 @@ function runLine(line)
     try {
         runTokens(tokens, 0);
     } catch (e) {
-        console.log(e);
+        console.log("e5 " + e);
         runState.pop();
     }
 }
@@ -527,7 +536,7 @@ read = new rl.ReadLine(
             runState.push(function() { read.resume(); });
             runLine(data, runState);
         } catch (e) {
-            console.log(e);
+            console.log("e6 " + e);
             read.resume();
         }
     },
