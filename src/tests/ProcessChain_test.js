@@ -1,6 +1,8 @@
 var pc = require("ProcessChain");
-var jsh = require('jsh');
-var jshNative = new jsh.native.jsh();
+var jshNative = require('jsh');
+jsh = {
+    jshNative: new jshNative.jsh()
+};
 
 var obj1 = new pc.ProcessChain(jshNative, 0);
 obj1.chain({ program: "/bin/ls", arguments: [ "/bin" ]}).chain({ program: "/bin/grep", arguments: [ "bz" ]});

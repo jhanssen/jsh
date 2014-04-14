@@ -5,13 +5,13 @@ var pc = require('ProcessChain');
 var Job = require('Job');
 var Completion = require('Completion');
 var Tokenizer = require('Tokenizer');
-var jsh = require('jsh');
+var jshnative = require('jsh');
 var path = require('path');
 var fs = require('fs');
 //var Service = require('Service');
-global.jsh = {
+jsh = {
     path: /^(.*\/)[^/]*$/.exec(__filename)[1],
-    jshNative: new jsh.native.jsh(),
+    jshNative: new jshnative.jsh(),
     Job: Job,
     jobCount: 0,
     completion: new Completion.Completion(),
@@ -26,13 +26,13 @@ global.jsh = {
             // split on ':'
             path = path.split(":");
             for (var i in path) {
-                if (global.jsh.jshNative.isExecutable(path[i] + "/" + prog))
+                if (jsh.jshNative.isExecutable(path[i] + "/" + prog))
                     prog = path[i] + "/" + prog;
             }
             if (prog.indexOf("/") == -1) {
                 throw "File not found: " + prog;
             }
-        } else if (!global.jsh.jshNative.isExecutable(prog)) {
+        } else if (!jsh.jshNative.isExecutable(prog)) {
             throw "File not found: " + prog;
         }
 
@@ -48,7 +48,7 @@ global.jsh = {
             console.error.apply(console, arguments);
     }
 };
-global.jsh.jshNative.setupShell();
+jsh.jshNative.setupShell();
 var read;
 var runState;
 
@@ -66,7 +66,7 @@ RunState.prototype.pop = function()
 {
     var data = this._data.pop();
     var c = this._calc(data.status);
-    global.jsh.log("popping with " + JSON.stringify(c));
+    jsh.log("popping with " + JSON.stringify(c));
     data.cb(c.status);
 };
 
@@ -159,7 +159,7 @@ function isFunction(token)
         for (var i in list) {
             if (obj === undefined)
                 return false;
-            global.jsh.log("testing " + list[i]);
+            jsh.log("testing " + list[i]);
             obj = obj[list[i]];
         }
         return (typeof obj === "function");
@@ -257,7 +257,7 @@ function runJavaScript(token, job)
         }
         return undefined;
     } else {
-        global.jsh.log("evaling " + func);
+        jsh.log("evaling " + func);
         return eval.call(global, func);
     }
 }
@@ -303,7 +303,7 @@ function runTokens(tokens, pos)
     for (var i = pos; i < tokens.length; ++i) {
         var token = tokens[i];
         var op = operator(token);
-        global.jsh.log("----");
+        jsh.log("----");
         op = operator(token);
         if (op === undefined) {
             throw "Unrecognized operator";
@@ -311,7 +311,7 @@ function runTokens(tokens, pos)
         // remove the operator
         token.pop();
 
-        global.jsh.log("operator " + op);
+        jsh.log("operator " + op);
         if (op === '|') {
             if (!job) {
                 job = new Job.Job();
@@ -320,12 +320,12 @@ function runTokens(tokens, pos)
             throw "Invalid operator for pipe job";
         }
         for (i in token) {
-            global.jsh.log("  token " + token[i].type + " '" + token[i].data + "'");
+            jsh.log("  token " + token[i].type + " '" + token[i].data + "'");
         }
 
         var iscmd = true, ret;
         if (token.length >= 1 && token[0].type === Tokenizer.GROUP) {
-            global.jsh.log("    is a group");
+            jsh.log("    is a group");
             // run the group
             runState.push(function(ret) {
                 if (runState.checkOperator(op, ret))
@@ -336,7 +336,7 @@ function runTokens(tokens, pos)
             runLine(token[0].data);
             return;
         } else if (maybeJavaScript(token)) {
-            global.jsh.log("    might be js");
+            jsh.log("    might be js");
             iscmd = false;
             try {
                 ret = runJavaScript(token, job);
@@ -348,9 +348,9 @@ function runTokens(tokens, pos)
         }
         if (!iscmd) {
             if (hasWait(ret)) {
-                global.jsh.log("pushing...");
+                jsh.log("pushing...");
                 runState.push(function(ret) {
-                    global.jsh.log("done!");
+                    jsh.log("done!");
                     if (runState.checkOperator(op, ret))
                         runTokens(tokens, pos + 1);
                     else
@@ -365,7 +365,7 @@ function runTokens(tokens, pos)
                 return;
             }
         }
-        global.jsh.log("  is a command");
+        jsh.log("  is a command");
         var cmd = undefined;
         var args = [];
         for (i in token) {
@@ -376,13 +376,13 @@ function runTokens(tokens, pos)
             }
         }
         if (cmd !== undefined) {
-            global.jsh.log("execing cmd " + cmd);
+            jsh.log("execing cmd " + cmd);
             try {
                 if (job) {
-                    job.proc({ program: cmd, arguments: args, environment: global.jsh.environment(), cwd: process.cwd() });
+                    job.proc({ program: cmd, arguments: args, environment: jsh.environment(), cwd: process.cwd() });
                 } else {
                     var procjob = new Job.Job();
-                    procjob.proc({ program: cmd, arguments: args, environment: global.jsh.environment(), cwd: process.cwd() });
+                    procjob.proc({ program: cmd, arguments: args, environment: jsh.environment(), cwd: process.cwd() });
                     procjob.exec(Job.FOREGROUND, function(data) { console.log(data); },
                                  function(code) {
                                      if (procjob.type === Job.BACKGROUND)
@@ -407,7 +407,7 @@ function runTokens(tokens, pos)
         }
     }
     if (job) {
-        global.jsh.log("running job");
+        jsh.log("running job");
         job.exec(Job.FOREGROUND, console.log, function(code) { if (job.type === Job.FOREGROUND) { runState.update(!code); runState.pop(); } });
     }
 }
@@ -443,11 +443,11 @@ function runLine(line)
         }
     } else {
         try {
-            global.jsh.log("trying the entire thing: '" + line + "'");
+            jsh.log("trying the entire thing: '" + line + "'");
             ret = eval.call(global, line);
         } catch (e) {
             if (isJSError(e)) {
-                global.jsh.log("e4 " + e);
+                jsh.log("e4 " + e);
                 isjs = false;
             } else {
                 throw e;
@@ -455,9 +455,9 @@ function runLine(line)
         }
     }
     if (isjs) {
-        global.jsh.log("is js, ret " + JSON.stringify(ret));
+        jsh.log("is js, ret " + JSON.stringify(ret));
         if (hasWait(ret)) {
-            global.jsh.log("has wait foo");
+            jsh.log("has wait foo");
             return;
         }
         runState.update(jsReturn(ret));
@@ -487,7 +487,7 @@ function setupBuiltins() {
     }
 }
 
-global.jsh.environment = function() {
+jsh.environment = function() {
     var env = [];
     for (var i in global) {
         if (typeof global[i] === "string"
@@ -530,7 +530,7 @@ read = new rl.ReadLine(
         if (data === undefined) {
             read.cleanup();
             Job.cleanup();
-            global.jsh.jshNative.cleanup();
+            jsh.jshNative.cleanup();
             process.exit();
         }
 
@@ -543,6 +543,6 @@ read = new rl.ReadLine(
         }
     },
     function(data) {
-        return global.jsh.completion.complete(data);
+        return jsh.completion.complete(data);
     }
 );

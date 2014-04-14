@@ -25,6 +25,11 @@ for (var i=1; i<process.argv.length; ++i) {
         continue;
     }
 }
-if (!modulePath || !socketFile || !Service.launchService(modulePath, socketFile)) {
+if (!modulePath || !socketFile) {
     process.exit(2);
 }
+
+service = Service.launchService(modulePath, socketFile);
+console.log("CALLING STARTSERVICE", service);
+if (!service)
+    process.exit(3);

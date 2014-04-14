@@ -1,7 +1,7 @@
 var Job = require('Job');
-var jsh = require('jsh');
-global.jsh = {
-    jshNative: new jsh.native.jsh()
+var jshNative = require('jsh');
+jsh = {
+    jshNative: new jshNative.jsh()
 };
 
 var job1 = new Job.Job();
