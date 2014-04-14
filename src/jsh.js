@@ -171,6 +171,18 @@ function maybeJavaScript(token)
     return false;
 }
 
+function isVariable(variable)
+{
+    var list = variable.split('.');
+    var obj = global;
+    for (var i in list) {
+        if (obj === undefined)
+            return false;
+        obj = obj[list[i]];
+    }
+    return (typeof obj !== "undefined");
+}
+
 function runJavaScript(token, job)
 {
     var func = "";
@@ -207,7 +219,10 @@ function runJavaScript(token, job)
                     } else {
                         if (state === 0 && cnt)
                             func += ", ";
-                        func += token[i].data;
+                        if (isVariable(token[i].data))
+                            func += token[i].data;
+                        else
+                            func += "'" + token[i].data + "'";
                     }
                     ++cnt;
                 }
@@ -315,8 +330,9 @@ function runTokens(tokens, pos)
             try {
                 ret = runJavaScript(token, job);
             } catch (e) {
-                ret = false;
                 console.error(e);
+                runState.pop();
+                return;
             }
         }
         if (!iscmd) {
