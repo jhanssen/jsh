@@ -38,13 +38,16 @@ jsh = {
 
         return prog;
     },
-    logEnabled: false,
+    config: {
+        logEnabled: false,
+        expandVariables: true
+    },
     log: function() {
-        if (this.logEnabled)
+        if (jsh.config.logEnabled)
             console.log.apply(console, arguments);
     },
     error: function() {
-        if (this.logEnabled)
+        if (jsh.config.logEnabled)
             console.error.apply(console, arguments);
     }
 };
@@ -443,6 +446,7 @@ function runLine(line)
         }
     } else {
         try {
+            line = tok.replaceVariables();
             jsh.log("trying the entire thing: '" + line + "'");
             ret = eval.call(global, line);
         } catch (e) {
