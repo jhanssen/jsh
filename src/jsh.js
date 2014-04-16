@@ -49,6 +49,11 @@ jsh = {
     error: function() {
         if (jsh.config.logEnabled)
             console.error.apply(console, arguments);
+    },
+    promptIdx: 0,
+    prompt: function() {
+        var p = "jsh(" + (++this.promptIdx) + "): ";
+        return p;
     }
 };
 jsh.jshNative.setupShell();
@@ -529,6 +534,7 @@ loadRCFile(process.env.HOME + "/.jsh/jshrc.js");
 
 // first callback function handles input, the second handles completion
 read = new rl.ReadLine(
+    jsh.prompt(),
     function(data) {
         // handle input
         if (data === undefined) {
@@ -539,11 +545,11 @@ read = new rl.ReadLine(
         }
 
         try {
-            runState.push(function() { read.resume(); });
+            runState.push(function() { read.resume(jsh.prompt()); });
             runLine(data, runState);
         } catch (e) {
             console.log("e6 " + e);
-            read.resume();
+            read.resume(js.prompt());
         }
     },
     function(data) {
