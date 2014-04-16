@@ -375,15 +375,20 @@ function runTokens(tokens, pos)
         }
         jsh.log("  is a command");
         var cmd = undefined;
+        var globok = true;
         var args = [];
         for (i in token) {
-            if (cmd === undefined) {
+            if (token[i].type === Tokenizer.NOGLOBMATCH) {
+                globok = false;
+            } else if (cmd === undefined) {
                 cmd = token[i].data;
             } else if (token[i].type !== Tokenizer.HIDDEN) {
                 args.push(token[i].data);
             }
         }
-        if (cmd !== undefined) {
+        if (!globok) {
+            runState.pop();
+        } else if (cmd !== undefined) {
             jsh.log("execing cmd " + cmd);
             try {
                 if (job) {
