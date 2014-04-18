@@ -52,8 +52,21 @@ jsh = {
     },
     promptIdx: 0,
     prompt: function() {
+        if (typeof this._userPrompt === "function") {
+            try {
+                return this._userPrompt();
+            } catch (e) {
+                console.error("prompt error: " + e);
+            }
+        }
         var p = "jsh(" + (++this.promptIdx) + "): ";
         return p;
+    },
+    setPrompt: function(p) {
+        this._userPrompt = p;
+    },
+    execSync: function(cmd, args) {
+        return this.jshNative.execSync(this.pathify(cmd), args);
     }
 };
 jsh.jshNative.setupShell();
