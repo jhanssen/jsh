@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+// var jsh, global, __filename, require, process;
+
 var rl = require('ReadLine');
 var pc = require('ProcessChain');
 var Job = require('Job');
@@ -320,14 +322,14 @@ function runTokens(tokens, pos)
         return;
     }
 
-    var job;
+    var job, j;
     for (var i = pos; i < tokens.length; ++i) {
         var token = tokens[i];
         var op = operator(token);
-        jsh.log("----");
+        jsh.log("---- " + i + " " + pos + " " + tokens.length);
         op = operator(token);
         if (op === undefined) {
-            throw "Unrecognized operator";
+            throw "Unrecognized operator: " + JSON.stringify(token, null, 4);
         }
         // remove the operator
         token.pop();
@@ -340,8 +342,10 @@ function runTokens(tokens, pos)
         } else if (op !== ';' && job) {
             throw "Invalid operator for pipe job";
         }
-        for (i in token) {
-            jsh.log("  token " + token[i].type + " '" + token[i].data + "'");
+        if (jsh.config.logEnabled) {
+            for (j=0; j<token.length; ++j) {
+                jsh.log("  token " + token[j].type + " '" + token[j].data + "'");
+            }
         }
 
         var iscmd = true, ret;
@@ -390,13 +394,13 @@ function runTokens(tokens, pos)
         var cmd = undefined;
         var globok = true;
         var args = [];
-        for (i in token) {
-            if (token[i].type === Tokenizer.NOGLOBMATCH) {
+        for (j=0; j<token.length; ++j) {
+            if (token[j].type === Tokenizer.NOGLOBMATCH) {
                 globok = false;
             } else if (cmd === undefined) {
-                cmd = token[i].data;
-            } else if (token[i].type !== Tokenizer.HIDDEN) {
-                args.push(token[i].data);
+                cmd = token[j].data;
+            } else if (token[j].type !== Tokenizer.HIDDEN) {
+                args.push(token[j].data);
             }
         }
         if (!globok) {
@@ -567,7 +571,7 @@ read = new rl.ReadLine(
             runLine(data, runState);
         } catch (e) {
             console.log("e6 " + e);
-            read.resume(js.prompt());
+            read.resume(jsh.prompt());
         }
     },
     function(data) {
