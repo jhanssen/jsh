@@ -270,14 +270,8 @@ function runJavaScript(token, job)
     }
 
     if (job) {
-        var jobfunc = undefined;
-        try {
-            jobfunc = eval("(function(data) {" + func + "})");
-        } catch (e) {
-        }
-        if (typeof jobfunc === "function") {
-            job.js(new Job.JavaScript(jobfunc));
-        }
+        var jobfunc = eval("(function(data) {" + func + "})");
+        job.js(new Job.JavaScript(jobfunc));
         return undefined;
     } else {
         jsh.log("evaling " + func);
