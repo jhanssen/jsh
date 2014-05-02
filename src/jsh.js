@@ -270,7 +270,7 @@ function runJavaScript(token, job)
     }
 
     if (job) {
-        var jobfunc = eval("(function(data) {" + func + "})");
+        var jobfunc = eval("(function(io, stdin, stdout, stderr) {" + func + "})");
         job.js(new Job.JavaScript(jobfunc));
         return undefined;
     } else {
