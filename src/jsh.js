@@ -108,7 +108,7 @@ RunState.prototype.update = function(status)
 RunState.prototype.checkOperator = function(op, ret)
 {
     var cur = this._data[this._data.length - 1];
-    if (op === "&&" || op === "||" || op === ";") {
+    if (op === "&&" || op === "||" || op === ";" || op === '&') {
         switch (this._currentOp()) {
         case ";":
         case "|":
