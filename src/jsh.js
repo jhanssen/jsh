@@ -439,7 +439,7 @@ function isJSError(e)
 function runLine(line)
 {
     var tokens = [];
-    var tok = new Tokenizer.Tokenizer(), token;
+    var tok = new Tokenizer.Tokenizer(Tokenizer.SHELL), token;
     tok.tokenize(line);
     var isjs = true;
     while ((token = tok.next())) {
