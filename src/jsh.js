@@ -42,7 +42,8 @@ jsh = {
     },
     config: {
         logEnabled: false,
-        expandVariables: true
+        expandVariables: true,
+        prettyReturnValues: 4
     },
     log: function() {
         if (jsh.config.logEnabled)
@@ -479,6 +480,28 @@ function runLine(line)
         if (hasWait(ret)) {
             jsh.log("has wait foo");
             return;
+        }
+        var silent = false;
+        var output;
+        if (ret instanceof Object && ret.jsh instanceof Object) {
+            if (ret.jsh.silentReturnValue) {
+                silent = true;
+            } else {
+                output = ret.jsh.ret;
+            }
+        } else {
+            output = ret;
+        }
+        if (!silent) {
+            var header = " => ";
+            if (output instanceof Object) {
+                try {
+                    output = jsh.config.prettyReturnValues ? JSON.stringify(output, null, jsh.config.prettyReturnValues) : JSON.stringify(output);
+                    if (jsh.config.prettyReturnValues)
+                        header += "\n";
+                } catch (err) {}
+            }
+            jsh.jshNative.stdout(header, output, "\n");
         }
         runState.update(jsReturn(ret));
         runState.pop();
