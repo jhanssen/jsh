@@ -43,7 +43,8 @@ jsh = {
     config: {
         logEnabled: false,
         expandVariables: true,
-        prettyReturnValues: 4
+        prettyReturnValues: 4,
+        printUndefinedReturn: false
     },
     log: function() {
         if (jsh.config.logEnabled)
@@ -492,7 +493,7 @@ function runLine(line)
         } else {
             output = ret;
         }
-        if (!silent) {
+        if (!silent && (output !== undefined || jsh.config.printUndefinedReturn)) {
             var header = " => ";
             if (output instanceof Object) {
                 try {
