@@ -6,8 +6,6 @@ if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
-add_subdirectory(rct)
-
 if (${CMAKE_GENERATOR} MATCHES ".* Makefiles$")
   set(MAKE_COMMAND "$(MAKE)")
 else ()

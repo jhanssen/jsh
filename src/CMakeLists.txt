@@ -4,8 +4,6 @@ if (NOT CMAKE_BUILD_TYPE)
 endif ()
 add_definitions(-DOS_${CMAKE_SYSTEM_NAME} -DJSH_DOT_JS=\"${CMAKE_CURRENT_LIST_DIR}/jsh.js\")
 
-include(${CMAKE_CURRENT_LIST_DIR}/../3rdparty/rct/compiler.cmake)
-
 set(CLIENT_SOURCES
   Input.cpp
   Job.cpp
@@ -19,8 +17,6 @@ set(CLIENT_SOURCES
 
 include_directories(
   ${CMAKE_CURRENT_LIST_DIR}
-  ${CMAKE_CURRENT_LIST_DIR}/../3rdparty/rct
-  ${CMAKE_CURRENT_LIST_DIR}/../3rdparty/rct/include/rct
   ${CMAKE_CURRENT_LIST_DIR}/../3rdparty/utf8/source
   )
 
