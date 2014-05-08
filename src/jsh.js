@@ -494,15 +494,12 @@ function runLine(line)
             output = ret;
         }
         if (!silent && (output !== undefined || jsh.config.printUndefinedReturn)) {
-            var header = " => ";
             if (output instanceof Object) {
                 try {
                     output = jsh.config.prettyReturnValues ? JSON.stringify(output, null, jsh.config.prettyReturnValues) : JSON.stringify(output);
-                    if (jsh.config.prettyReturnValues)
-                        header += "\n";
                 } catch (err) {}
             }
-            jsh.jshNative.stdout(header, output, "\n");
+            jsh.jshNative.stdout(output, "\n");
         }
         runState.update(jsReturn(ret));
         runState.pop();
