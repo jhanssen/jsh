@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 // var jsh, global, __filename, require, process;
 
 var rl = require('ReadLine');
@@ -404,7 +402,10 @@ function runTokens(tokens, pos)
                 } else {
                     var procjob = new Job.Job();
                     procjob.proc({ program: cmd, arguments: args, environment: jsh.environment(), cwd: process.cwd() });
-                    procjob.exec(Job.FOREGROUND, jsh.jshNative.stdout,
+                    procjob.exec(Job.FOREGROUND,
+                                 function(arg) {
+                                     jsh.jshNative.stdout(arg);
+                                 },
                                  function(code) {
                                      if (procjob.type === Job.BACKGROUND)
                                          return;
@@ -429,7 +430,15 @@ function runTokens(tokens, pos)
     }
     if (job) {
         jsh.log("running job");
-        job.exec(Job.FOREGROUND, jsh.jshNative.stdout, function(code) { if (job.type === Job.FOREGROUND) { runState.update(!code); runState.pop(); } });
+        job.exec(Job.FOREGROUND,
+                 function(arg) {
+                     jsh.jshNative.stdout(arg);
+                 },
+                 function(code) {
+                     if (job.type === Job.FOREGROUND) {
+                         runState.update(!code); runState.pop();
+                     }
+                 });
     }
 }
 

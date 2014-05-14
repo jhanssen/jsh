@@ -5,7 +5,6 @@ CMakeFiles
 CMakeCache.txt
 rules.ninja
 build.ninja
-jsh
 nodejs.log
 Makefile
 src/node_modules/ProcessChain/build
