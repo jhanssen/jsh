@@ -270,7 +270,7 @@ function runJavaScript(token, job)
     }
 
     if (job) {
-        var jobfunc = eval("(function*(stdin) {" + func + "})");
+        var jobfunc = eval("(function*() {" + func + "})");
         jsh.log("creating func", func, jobfunc, typeof jobfunc);
         job.js(new Job.JavaScript(jobfunc));
         return undefined;
