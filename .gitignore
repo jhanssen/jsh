@@ -12,3 +12,4 @@ src/node_modules/ReadLine/build
 src/node_modules/promise/
 /.gdb_brestore
 /.gdb_brestore.txt
+/src/node_modules/jsh/build/
