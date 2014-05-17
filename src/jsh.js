@@ -9,7 +9,9 @@ var jshnative = require('jsh');
 var path = require('path');
 var fs = require('fs');
 //var Service = require('Service');
+var ifsOverrideStack = [];
 jsh = {
+    get IFS() { ifsOverrideStack.length ? ifsOverrideStack[ifsOverrideStack.length - 1] : '\n'; },
     path: /^(.*\/)[^/]*$/.exec(__filename)[1],
     jshNative: new jshnative.jsh(),
     Job: Job,
