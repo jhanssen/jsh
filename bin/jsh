@@ -11,7 +11,11 @@ JSHDOTJS="$DIR/../src/jsh.js"
 test -z "$JSH_NODE" && JSH_NODE="$DIR/../3rdparty/node/node --harmony"
 
 if [ -z "$JSH_GDB" ]; then
-    $JSH_NODE $JSHDOTJS
+    if [ -z "$JSH_LLDB" ]; then
+        $JSH_NODE $JSHDOTJS
+    else
+        lldb -- $JSH_NODE $JSHDOTJS
+    fi
 else
     gdb --args $JSH_NODE $JSHDOTJS
 fi
