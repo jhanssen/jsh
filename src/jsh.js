@@ -209,18 +209,6 @@ function maybeJavaScript(token)
     return false;
 }
 
-function isVariable(variable)
-{
-    var list = variable.split('.');
-    var obj = global;
-    for (var i in list) {
-        if (obj === undefined)
-            return false;
-        obj = obj[list[i]];
-    }
-    return (typeof obj !== "undefined");
-}
-
 function runJavaScript(token, job)
 {
     var func = "";
@@ -257,7 +245,7 @@ function runJavaScript(token, job)
                     } else {
                         if (state === 0 && cnt)
                             func += ", ";
-                        if (isVariable(token[i].data))
+                        if (token[i].type === Tokenizer.VARIABLE)
                             func += token[i].data;
                         else
                             func += "'" + token[i].data + "'";
@@ -452,6 +440,27 @@ function isJSError(e)
     return (e instanceof SyntaxError || e instanceof ReferenceError);
 }
 
+function replaceVariables(line, tokens)
+{
+    var out = line;
+    var off = 0;
+    for (var idx = 0; idx < tokens.length; ++idx) {
+        var token = tokens[idx];
+        for (var sub = 0; sub < token.length; ++sub) {
+            var entry = token[sub];
+            if (entry.type === Tokenizer.VARIABLE) {
+                var from = entry.from - 1; // include the $
+                var rep = "" + eval(entry.data);
+                var prev = out.substring(0, off + from);
+                var next = out.substring(off + entry.to);
+                out = prev + rep + next;
+                off += rep.length - (entry.to - from);
+            }
+        }
+    }
+    return out;
+}
+
 function runLine(line)
 {
     var tokens = [];
@@ -460,7 +469,7 @@ function runLine(line)
     var isjs = true;
     while ((token = tok.next())) {
         // for (var idx = 0; idx < token.length; ++idx) {
-        //     console.log(token[idx].type + " -> " + token[idx].data);
+        //     jsh.log(token[idx].type + " -> " + token[idx].data);
         // }
         tokens.push(token);
     }
@@ -478,7 +487,7 @@ function runLine(line)
         }
     } else {
         try {
-            line = tok.replaceVariables();
+            line = Tokenizer.stripEscapes(replaceVariables(line, tokens));
             jsh.log("trying the entire thing: '" + line + "'");
             ret = eval.call(global, line);
         } catch (e) {
