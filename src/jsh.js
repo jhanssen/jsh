@@ -247,8 +247,10 @@ function runJavaScript(token, job)
                             func += ", ";
                         if (token[i].type === Tokenizer.VARIABLE)
                             func += token[i].data;
-                        else
+                        else if (!state)
                             func += "'" + token[i].data + "'";
+                        else
+                            func += token[i].data;
                     }
                     ++cnt;
                 }
