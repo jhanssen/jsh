@@ -489,7 +489,7 @@ function runLine(line)
         }
     } else {
         try {
-            line = Tokenizer.stripEscapes(replaceVariables(line, tokens));
+            line = Tokenizer.stripEscapes(replaceVariables(tok.line, tokens));
             jsh.log("trying the entire thing: '" + line + "'");
             ret = eval.call(global, line);
         } catch (e) {
