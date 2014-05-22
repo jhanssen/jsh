@@ -1,3 +1,6 @@
 [submodule "3rdparty/node"]
 	path = 3rdparty/node
 	url = https://github.com/joyent/node.git
+[submodule "3rdparty/readline"]
+	path = 3rdparty/readline
+	url = git://git.savannah.gnu.org/readline.git

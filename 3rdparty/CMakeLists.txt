@@ -16,3 +16,7 @@ add_custom_target(node
   # COMMAND ninja -C ${CMAKE_CURRENT_BINARY_DIR}/node/out/Release/
   WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/node)
 
+add_custom_target(readline
+  COMMAND ./configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/readline
+  COMMAND ${MAKE_COMMAND} -C ${CMAKE_CURRENT_BINARY_DIR}/readline
+  WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/readline)
