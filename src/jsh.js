@@ -333,7 +333,7 @@ function runTokens(tokens, pos)
         }
         if (jsh.config.logEnabled) {
             for (j=0; j<token.length; ++j) {
-                jsh.log("  token " + token[j].type + " '" + token[j].data + "'");
+                jsh.log("  token " + Tokenizer.tokenName(token[j].type) + " '" + token[j].data + "'");
             }
         }
 
@@ -466,19 +466,83 @@ function replaceVariables(line, tokens)
 function runLine(line)
 {
     var tokens = [];
-    var tok = new Tokenizer.Tokenizer(Tokenizer.SHELL), token;
+    var tok = new Tokenizer.Tokenizer(Tokenizer.SHELL);
     tok.tokenize(line);
-    var isjs = true;
-    while ((token = tok.next())) {
-        // for (var idx = 0; idx < token.length; ++idx) {
-        //     jsh.log(token[idx].type + " -> " + token[idx].data);
-        // }
-        tokens.push(token);
+    var commands = [];
+    var command;
+    while ((command = tok.next())) {
+        commands.push(command);
     }
+    runCommands(commands, line);
+}
+
+function runCommands(commands, line)
+{
+    // console.log("------------------------RUNCOMMANDS\n", line, "\n", commands);
+    for (var c=0; c<commands.length; ++c) {
+        var command = commands[c];
+        for (var idx = 0; idx < command.length; ++idx) {
+            jsh.log(c + "/" + commands.length + " " + command[idx].type + " -> " + command[idx].data);
+        }
+        for (var i=0; i<command.length; ++i) {
+            // console.log("RUNNING TOKEN", i, command[i]);
+            if (command[i].type === Tokenizer.EXECUTE) {
+                if (i == 0 || i + 1 >= command.length)
+                    throw "Something wrong, execute not surrounded by `";
+                var oldOut = jsh.jshNative.stdout;
+                var subCommandData = "";
+                jsh.jshNative.stdout = function(data) {
+                    subCommandData += data;
+                };
+
+                command[i].type = Tokenizer.COMMAND;
+                // console.log("FISKEFAEN", commands);
+                var continueCommands = true;
+                runState.push(function() {
+                    jsh.jshNative.stdout = oldOut;
+                    if (continueCommands) {
+                        var split = subCommandData.split(/\s+/);
+                        if (split[0] === '')
+                            split.splice(0, 1);
+                        if (split[split.length - 1] === '')
+                            split.splice(split.length - 1, 1);
+                        var res = split.join(' ');
+                        jsh.log("Replaced subshell output '" + command[i].data + "' => '" + res + "'");
+                        command[i].data = res;
+                        command.splice(i + 1, 1);
+                        command.splice(i - 1, 1);
+                        if (i > 1) {
+                            var prev = command[i - 2];
+                            if (prev.type === Tokenizer.COMMAND && prev.to + 1 === command[i - 1].from) { // join commands
+                                prev.data += command[i - 1].data;
+                                command.splice(i - 1, 1);
+                            }
+                        }
+                        // console.log("SSSSSSSSSS", command[i - 2], command[i - 1]);
+                        // console.log("FISK", commands);
+                        runCommands(commands, line);
+                    }
+                });
+
+                try {
+                    // console.log("RUNNING SUBSHELL", command[i].data);
+                    runLine(command[i].data);
+                } catch (e) {
+                    jsh.log("GOT ERR", e);
+                    continueCommands = false;
+                    runState.pop();
+                }
+
+                return;
+            }
+            // console.log(i, command[i]);
+        }
+    }
+    var isjs = true;
     var ret;
-    if (tokens.length === 1 && isFunction(tokens[0])) {
+    if (commands.length === 1 && isFunction(commands[0])) {
         try {
-            ret = runJavaScript(tokens[0]);
+            ret = runJavaScript(commands[0]);
         } catch (e) {
             if (isJSError(e)) {
                 console.log("e3 " + e);
@@ -489,7 +553,7 @@ function runLine(line)
         }
     } else {
         try {
-            line = Tokenizer.stripEscapes(replaceVariables(tok.line, tokens));
+            line = Tokenizer.stripEscapes(replaceVariables(line, commands));
             jsh.log("trying the entire thing: '" + line + "'");
             ret = eval.call(global, line);
         } catch (e) {
@@ -532,7 +596,7 @@ function runLine(line)
     }
 
     try {
-        runTokens(tokens, 0);
+        runTokens(commands, 0);
     } catch (e) {
         console.log("e5 " + e);
         runState.pop();
